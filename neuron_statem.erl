@@ -80,6 +80,12 @@ analog_neuron(cast, {Pid,SynaptaBitString}, State = #neuron_statem_state{}) ->
   NextStateName = analog_neuron,
   {next_state, NextStateName, State}.
 
+hold(cast, {Pid,SynaptaBitString}, State = #neuron_statem_state{}) ->
+  % save the pids
+  % do neuron function
+  NextStateName = analog_neuron,
+  {next_state, NextStateName, State}.
+
 %% @private
 %% @doc If callback_mode is handle_event_function, then whenever a
 %% gen_statem receives an event from call/2, cast/2, or as a normal
