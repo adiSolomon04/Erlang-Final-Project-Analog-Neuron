@@ -12,7 +12,7 @@
 -behaviour(gen_statem).
 
 %% API
--export([start_link/1]).
+-export([start_link/2]).
 
 %% gen_statem callbacks
 -export([init/1, format_status/2, state_name/3, handle_event/4, terminate/3,
@@ -20,7 +20,7 @@
 
 -define(SERVER, ?MODULE).
 
--record(neuron_statem_state, {}).
+-record(neuron_statem_state, {etsTid = undifined, neuronParameters,pidIn,pidOut}).
 
 %%%===================================================================
 %%% API
@@ -29,8 +29,8 @@
 %% @doc Creates a gen_statem process which calls Module:init/1 to
 %% initialize. To ensure a synchronized start-up procedure, this
 %% function does not return until Module:init/1 has returned.
-start_link(Parametes) ->
-  gen_statem:start_link({local, ?SERVER}, ?MODULE, [Parametes], []).
+start_link(EtsId, NeuronParameters) ->
+  gen_statem:start_link({local, ?SERVER}, ?MODULE, [EtsId, NeuronParameters], []).
 
 %%%===================================================================
 %%% gen_statem callbacks
@@ -40,9 +40,9 @@ start_link(Parametes) ->
 %% @doc Whenever a gen_statem is started using gen_statem:start/[3,4] or
 %% gen_statem:start_link/[3,4], this function is called by the new
 %% process to initialize.
-init([Parametes]) ->
+init([EtsId, NeuronParameters]) ->
   % emter the parmeters to the ets and record/Parametes
-  {ok, state_name, #neuron_statem_state{}}.
+  {ok, state_name, #neuron_statem_state{etsTid = EtsId, neuronParameters = NeuronParameters}}.
 
 %% @private
 %% @doc This function is called by a gen_statem when it needs to find out
@@ -71,12 +71,12 @@ state_name(_EventType, _EventContent, State = #neuron_statem_state{}) ->
 network_config(cast, {PidGetMsg,PidSendMsg}, State = #neuron_statem_state{}) ->
   % save the pids
   NextStateName = analog_neuron,
-  {next_state, NextStateName, State}.
+  {next_state, NextStateName, State#neuron_statem_state{pidIn =PidGetMsg ,pidOut=PidSendMsg}}.
 
 
 analog_neuron(cast, {Pid,SynaptaBitString}, State = #neuron_statem_state{}) ->
-  % save the pids
   % do neuron function
+  gotBitString(Pid, SynaptaBitString, State),
   NextStateName = analog_neuron,
   {next_state, NextStateName, State}.
 
@@ -110,3 +110,9 @@ code_change(_OldVsn, StateName, State = #neuron_statem_state{}, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+gotBitString(Pid, SynaptaBitString, State) ->
+  %% Todo: do the neuron function
+  %% send the message if needed
+  %% return the new state
+  do.
