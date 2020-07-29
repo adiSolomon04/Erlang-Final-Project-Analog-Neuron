@@ -4,15 +4,15 @@
 %%% @doc
 %%%
 %%% @end
-%%% Created : 28. Jul 2020 10:38 AM
+%%% Created : 29. Jul 2020 2:52 AM
 %%%-------------------------------------------------------------------
--module(neuron_statem).
+-module(ets_statem).
 -author("eran").
 
 -behaviour(gen_statem).
 
 %% API
--export([start_link/2]).
+-export([start_link/3]).
 
 %% gen_statem callbacks
 -export([init/1, format_status/2, state_name/3, handle_event/4, terminate/3,
@@ -20,7 +20,7 @@
 
 -define(SERVER, ?MODULE).
 
--record(neuron_statem_state, {etsTid = undifined, neuronParameters,pidIn,pidOut}).
+-record(ets_statem_state, {}).
 
 %%%===================================================================
 %%% API
@@ -29,8 +29,8 @@
 %% @doc Creates a gen_statem process which calls Module:init/1 to
 %% initialize. To ensure a synchronized start-up procedure, this
 %% function does not return until Module:init/1 has returned.
-start_link(EtsId, NeuronParameters) ->
-  gen_statem:start_link({local, ?SERVER}, ?MODULE, [EtsId, NeuronParameters], []).
+start_link(Pid_Server,StartState,PidHeir) ->
+  gen_statem:start_link({local, ?SERVER}, ?MODULE, [Pid_Server,StartState,PidHeir], []).
 
 %%%===================================================================
 %%% gen_statem callbacks
@@ -40,20 +40,14 @@ start_link(EtsId, NeuronParameters) ->
 %% @doc Whenever a gen_statem is started using gen_statem:start/[3,4] or
 %% gen_statem:start_link/[3,4], this function is called by the new
 %% process to initialize.
-init([EtsId,restore]) ->
-  % emter the parmeters to the ets and record/Parametes
-  {ok, state_name, #neuron_statem_state{etsTid = EtsId, neuronParameters = restore}};
+init([Pid_Server,backup,none]) ->
+  {ok, backupState, Pid_Server};
 
-
-%% @private
-%% @doc Whenever a gen_statem is started using gen_statem:start/[3,4] or
-%% gen_statem:start_link/[3,4], this function is called by the new
-%% process to initialize.
-init([EtsId, NeuronParameters]) ->
-  % emter the parmeters to the ets and record/Parametes
-  {ok, state_name, #neuron_statem_state{etsTid = EtsId, neuronParameters = NeuronParameters}}.
-
-
+init([Pid_Server,etsOwner,PidHeir]) ->
+  %%todo: maybe need read/write_concurrency
+  Tid = ets:new(neurons_data,[set,{heir,PidHeir,none},public]),
+  Pid_Server!{self(),Tid}, %% send the Tid back to the server
+  {ok, etsOwnerState, Tid}.
 
 %% @private
 %% @doc This function is called by a gen_statem when it needs to find out
@@ -74,40 +68,34 @@ format_status(_Opt, [_PDict, _StateName, _State]) ->
 %% state name.  If callback_mode is state_functions, one of these
 %% functions is called when gen_statem receives and event from
 %% call/2, cast/2, or as a normal process message.
-state_name(_EventType, _EventContent, State = #neuron_statem_state{}) ->
+state_name(cast, _EventContent, State = #ets_statem_state{}) ->
   NextStateName = next_state,
   {next_state, NextStateName, State}.
 
 
-network_config(cast, {PidGetMsg,PidSendMsg}, State = #neuron_statem_state{}) ->
-  % save the pids
-  NextStateName = analog_neuron,
-  {next_state, NextStateName, State#neuron_statem_state{pidIn =PidGetMsg ,pidOut=PidSendMsg}}.
+etsOwnerState({call,Pid_Server}, {changePid,{OldPid,NewPid}},Tid) ->
+  [NeuronData]=ets:take(Tid,OldPid),
+  ets:insert_new(Tid,{NewPid,NeuronData}),
+  Reply = [{self(),{updatePid,NewPid}}],
+  NextStateName = etsOwnerState,
+  {next_state, NextStateName,Tid,Reply};
+
+etsOwnerState({call,Pid_Server}, {changeHeir,{Heir}},Tid) ->
+  ets:setopts(Tid,Heir),
+  Reply= [{reply,Pid_Server,{self(),{changedHeir,Heir}}}],
+  NextStateName = etsOwnerState,
+  {next_state, NextStateName,Tid, Reply}.
 
 
-analog_neuron(cast, {Pid,SynaptaBitString}, State = #neuron_statem_state{}) ->
-  % do neuron function
-  gotBitString(Pid, SynaptaBitString, State),
-  NextStateName = analog_neuron,
-  {next_state, NextStateName, State}.
-
-analog_neuron(cast, fixMessage, State = #neuron_statem_state{}) ->
-  % go to repair state
-  NextStateName = hold,
-  {next_state, NextStateName, State}.
-
-
-hold(cast, {Pid,SynaptaBitString}, State = #neuron_statem_state{}) ->
-  % save the pids
-  % do neuron function
-  NextStateName = analog_neuron,
-  {next_state, NextStateName, State}.
+backupState(info, {'ETS-TRANSFER',Tid,_,_}, _) ->
+  NextStateName = etsOwnerState,
+  {next_state, NextStateName, Tid}.
 
 %% @private
 %% @doc If callback_mode is handle_event_function, then whenever a
 %% gen_statem receives an event from call/2, cast/2, or as a normal
 %% process message, this function is called.
-handle_event(_EventType, _EventContent, _StateName, State = #neuron_statem_state{}) ->
+handle_event(_EventType, _EventContent, _StateName, State = #ets_statem_state{}) ->
   NextStateName = the_next_state_name,
   {next_state, NextStateName, State}.
 
@@ -116,21 +104,14 @@ handle_event(_EventType, _EventContent, _StateName, State = #neuron_statem_state
 %% terminate. It should be the opposite of Module:init/1 and do any
 %% necessary cleaning up. When it returns, the gen_statem terminates with
 %% Reason. The return value is ignored.
-terminate(_Reason, _StateName, _State = #neuron_statem_state{}) ->
+terminate(_Reason, _StateName, _State = #ets_statem_state{}) ->
   ok.
 
 %% @private
 %% @doc Convert process state when code is changed
-code_change(_OldVsn, StateName, State = #neuron_statem_state{}, _Extra) ->
+code_change(_OldVsn, StateName, State = #ets_statem_state{}, _Extra) ->
   {ok, StateName, State}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-gotBitString(Pid, SynaptaBitString, State) ->
-  %% Todo: do the neuron function
-  %% Todo: the fucking branch.
-  %% send the message if needed
-  %% return the new state
-  do.
