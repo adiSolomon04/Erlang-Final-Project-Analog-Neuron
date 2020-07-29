@@ -40,7 +40,7 @@ start_link(EtsIdf, NeuronParameters) ->
 %% @doc Whenever a gen_statem is started using gen_statem:start/[3,4] or
 %% gen_statem:start_link/[3,4], this function is called by the new
 %% process to initialize.
-init([EtsId restore]) ->
+init([EtsId,restore]) ->
   % emter the parmeters to the ets and record/Parametes
   {ok, state_name, #neuron_statem_state{etsTid = EtsId, neuronParameters = restore}};
 
