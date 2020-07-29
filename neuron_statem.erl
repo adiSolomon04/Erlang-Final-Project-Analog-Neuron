@@ -29,8 +29,8 @@
 %% @doc Creates a gen_statem process which calls Module:init/1 to
 %% initialize. To ensure a synchronized start-up procedure, this
 %% function does not return until Module:init/1 has returned.
-start_link(EtsId, NeuronParameters) ->
-  gen_statem:start_link({local, ?SERVER}, ?MODULE, [EtsId, NeuronParameters], []).
+start_link(EtsIdf, NeuronParameters) ->
+  gen_statem:start_link({local, ?SERVER}, ?MODULE, [EtsIdf, NeuronParameters], []).
 
 %%%===================================================================
 %%% gen_statem callbacks
@@ -40,9 +40,20 @@ start_link(EtsId, NeuronParameters) ->
 %% @doc Whenever a gen_statem is started using gen_statem:start/[3,4] or
 %% gen_statem:start_link/[3,4], this function is called by the new
 %% process to initialize.
+init([EtsId restore]) ->
+  % emter the parmeters to the ets and record/Parametes
+  {ok, state_name, #neuron_statem_state{etsTid = EtsId, neuronParameters = restore}};
+
+
+%% @private
+%% @doc Whenever a gen_statem is started using gen_statem:start/[3,4] or
+%% gen_statem:start_link/[3,4], this function is called by the new
+%% process to initialize.
 init([EtsId, NeuronParameters]) ->
   % emter the parmeters to the ets and record/Parametes
   {ok, state_name, #neuron_statem_state{etsTid = EtsId, neuronParameters = NeuronParameters}}.
+
+
 
 %% @private
 %% @doc This function is called by a gen_statem when it needs to find out
