@@ -29,8 +29,8 @@
 %% @doc Creates a gen_statem process which calls Module:init/1 to
 %% initialize. To ensure a synchronized start-up procedure, this
 %% function does not return until Module:init/1 has returned.
-start_link(EtsIdf, NeuronParameters) ->
-  gen_statem:start_link({local, ?SERVER}, ?MODULE, [EtsIdf, NeuronParameters], []).
+start_link(EtsId, NeuronParameters) ->
+  gen_statem:start_link({local, ?SERVER}, ?MODULE, [EtsId, NeuronParameters], []).
 
 %%%===================================================================
 %%% gen_statem callbacks
@@ -124,6 +124,7 @@ code_change(_OldVsn, StateName, State = #neuron_statem_state{}, _Extra) ->
 
 gotBitString(Pid, SynaptaBitString, State) ->
   %% Todo: do the neuron function
+  %% Todo: the fucking branch.
   %% send the message if needed
   %% return the new state
   do.
