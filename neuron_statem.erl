@@ -147,30 +147,104 @@ gotBitString(Pid, SynBitString, State= #neuron_statem_state{etsTid = EtsMap, act
   NewMsgQueue= maps:get(Pid,MsgMap)++SynBitString,NewNeuronMap=maps:update(msgMap,maps:update(Pid,NewMsgQueue,MsgMap),ReceivedNeuronMap),
   IsReady=checkReady(maps:iterator(maps:get(msgMap,NewNeuronMap))),
   if
-    IsReady==false ->ets:insert(EtsMap,{self(),NewNeuronMap}), State#neuron_statem_state{etsTid = EtsMap};
-    true ->InputsMap=getLists(EtsMap,NewNeuronMap,maps:get(msgMap,NewNeuronMap),PidIn,maps:new()),StagesTuple=prepareForCalc(maps:iterator(InputsMap),{[],[]}),calculations(State#neuron_statem_state{etsTid = EtsMap},InputsMap)
-  end.
+    IsReady==false ->ets:insert(EtsMap,{self(),NewNeuronMap});
+    true ->InputsMap=getLists(EtsMap,NewNeuronMap,maps:get(msgMap,NewNeuronMap),PidIn,maps:new()),
+           calculations(State#neuron_statem_state{etsTid = EtsMap},InputsMap,size(SynBitString),1,[])
+  end, State#neuron_statem_state{etsTid = EtsMap}.
 
 
 checkReady(MsgMapIter) when MsgMapIter==none -> true;
 checkReady(MsgMapIter) when MsgMapIter=={_,[],_} -> false;
 checkReady(MsgMapIter) -> checkReady(maps:next(MsgMapIter)).
 
-calculations(State= #neuron_statem_state{etsTid = EtsMap, actTypePar=ActType, weightPar=Weight,
-  biasPar=Bias, leakageFactorPar=LF,
-  leakagePeriodPar=LP,pidIn =PidIn ,pidOut=PidOut},InputsMap,)->
+calculations(_,_,NumOfStages,N,Output) when N==NumOfStages+1->Bin=my_list_to_binary(Output),sendToNextLayer(Bin);
+calculations(State= #neuron_statem_state{etsTid = EtsMap, actTypePar=_, weightPar=_,
+  biasPar=_, leakageFactorPar=_,
+  leakagePeriodPar=_,pidIn =_ ,pidOut=_},InputsMap,NumOfStages,N,Output)-> NewOutput=Output++calcStage(State,InputsMap,N),
+  calculations(State= #neuron_statem_state{etsTid = EtsMap},InputsMap,NumOfStages,N+1,NewOutput).
 
-
-
-  .
 getLists(EtsMap,NeuronMap,_,[],Output) ->ets:insert(EtsMap,{self(),NeuronMap}), Output;
 getLists(EtsMap,NeuronMap,MsgMap,[HPid,TPid],Output) -> [Head|Tail]=maps:get(HPid,MsgMap),
   NewOutput=maps:put(HPid,binary_to_list(Head),Output), NewQ=Tail,
   NewNeuronMap=maps:update(msgMap,maps:update(HPid,NewQ,MsgMap),NeuronMap), getLists(EtsMap,NewNeuronMap,MsgMap,TPid,NewOutput).
 
-prepareForCalc(Iterator,Output) when Iterator==none -> Output;
-prepareForCalc({K,V,I},Output) ->
-if
-LF>=3-> NewAccMap=maps:update(acc,Acc+maps:get(Pid,Weight)*SynBitString*math:pow(2,LF-3),ets:lookup(EtsMap,self()));
-true ->  NewAccMap=maps:update(acc,Acc+maps:get(Pid,Weight)*SynBitString,ets:lookup(EtsMap,self()))
-end,
+my_list_to_binary(List) ->
+  my_list_to_binary(List, <<>>).
+
+my_list_to_binary([H|T], Acc) ->
+  my_list_to_binary(T, <<Acc/binary,H>>);
+my_list_to_binary([], Acc) ->
+  Acc.
+
+calcStage(State = #neuron_statem_state{etsTid = EtsId, actTypePar=ActType,
+  weightPar=Weight,
+  biasPar=Bias, leakageFactorPar=LF,
+  leakagePeriodPar=LP,pidIn=PidIn,pidOut=_},InputMap,N)->
+  Acc=maps:get(acc,ets:lookup(EtsId,self())),
+  SumAcc=accumulate(LF,PidIn,InputMap,N,0,Acc,Weight),
+  if
+    LF>=3-> CurAcc = SumAcc+Bias*math:pow(2,LF-3);
+    true -> CurAcc = SumAcc+Bias
+  end,
+  case ActType of
+    identity-> OutputBit=handleIdentity(EtsId,CurAcc);
+    binaryStep-> OutputBit=handleBinaryStep(CurAcc);
+    sigmoid->SelfMapTest=ets:lookup(EtsId,self()),PN_generator=maps:get(pn_generator,SelfMapTest),
+      {OutputBit,NewPnGenerator,NewRandVar}=handleSigmoid(CurAcc,0,0,PN_generator),
+      UpdatedMap1=maps:update(pn_generator,NewPnGenerator,SelfMapTest),UpdatedMap2=maps:update(rand_gauss_var,NewRandVar,UpdatedMap1),
+      ets:insert(EtsId,{self(),UpdatedMap2})
+  end,
+  SelfMap=ets:lookup(EtsId,self()),Leakage_Timer=maps:get(leakage_timer,SelfMap),
+  if
+    Leakage_Timer>=LP ->FinalAcc=leak(CurAcc,LF),New_Leakage_Timer=0;
+    true -> New_Leakage_Timer=Leakage_Timer+1,FinalAcc=CurAcc
+  end,
+  UpdatedSelfMap=maps:update(leakage_timer,New_Leakage_Timer,SelfMap),
+  FinalSelfMap=maps:update(acc,FinalAcc,UpdatedSelfMap),
+  ets:insert(EtsId,{self(),FinalSelfMap}),
+  OutputBit.
+
+
+accumulate(_,PidIn,_,_,PidCount,Acc,_) when PidCount==size(PidIn) -> Acc;
+
+accumulate(LF,PidIn,InputMap,N,PidCount,Acc,Weight) ->CurrPid=lists:nth(PidCount,PidIn),
+  if
+  LF>=3-> NewAcc = Acc+maps:get(CurrPid,Weight)*lists:nth(N,maps:get(CurrPid,InputMap))*math:pow(2,LF-3);
+  true -> NewAcc = Acc+maps:get(CurrPid,Weight)*lists:nth(N,maps:get(CurrPid,InputMap))
+  end, accumulate(LF,PidIn,InputMap,N,PidCount+1,NewAcc,Weight).
+
+handleIdentity(EtsId,CurAcc) when CurAcc>32767 ->NewRandVar= 32767,SelfMap=ets:lookup(EtsId,self()),
+  ets:insert(EtsId,{self(),maps:update(rand_gauss_var,NewRandVar,SelfMap)}),1;
+handleIdentity(EtsId,CurAcc) when CurAcc < -32767 ->NewRandVar= -32767,SelfMap=ets:lookup(EtsId,self()),
+  ets:insert(EtsId,{self(),maps:update(rand_gauss_var,NewRandVar,SelfMap)}),0;
+handleIdentity(EtsId,CurAcc) ->NewRandVar= CurAcc+32768,SelfMap=ets:lookup(EtsId,self()),
+  if
+    NewRandVar >=65536 ->ets:insert(EtsId,{self(),maps:update(rand_gauss_var,65536,SelfMap)}),1 ;
+    true -> ets:insert(EtsId,{self(),maps:update(rand_gauss_var,NewRandVar,SelfMap)}),0
+  end.
+
+handleBinaryStep(CurAcc) when CurAcc>0 -> 1;
+handleBinaryStep(CurAcc) when CurAcc<0 -> 0.
+
+handleSigmoid(CurAcc,8,GaussVar,PN_generator) ->Temp=GaussVar band 32768,
+                                                       if
+                                                         Temp /= 0  -> NewGaussVar=GaussVar band 4,294,901,760;
+                                                         true ->  NewGaussVar=GaussVar
+                                                       end,
+                                                       if
+                                                        CurAcc>GaussVar -> {1,PN_generator,NewGaussVar};
+                                                        true -> {0,PN_generator,NewGaussVar}
+                                                       end;
+handleSigmoid(CurAcc,N,GaussVar,PN_generator) ->
+  NewGaussVar=GaussVar+PN_generator band 8191,
+  New_PN_generator=floor(PN_generator/2) bor ((pn_generator band 16384) bxor ((pn_generator band 1)*math:pow(2,14))),
+  handleSigmoid(CurAcc,N+1,NewGaussVar,New_PN_generator).
+
+leak(Acc,LF) when Acc < 0-> Decay_Delta=floor((-Acc)*pow(2,-LF)), if
+                                                             Decay_Delta==0 -> 1 ;
+                                                             true -> Decay_Delta
+                                                           end;
+leak(Acc,LF) when Acc > 0-> Decay_Delta=-floor((Acc)*pow(2,-LF)), if
+                                                                    Decay_Delta==0 and Acc/=0 -> 1 ;
+                                                                    true -> Decay_Delta
+                                                                  end.
