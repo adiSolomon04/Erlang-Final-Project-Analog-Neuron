@@ -2,8 +2,10 @@
 -author("adisolo").
 
 %% API
--export([start/0, functionButtonStart/2]).
+-export([start/0, handleButtonStart/2]).
 -include_lib("wx/include/wx.hrl").
+
+-record(data, {env, file}).
 
 
 %% Will get the pid of server
@@ -25,7 +27,7 @@ start() ->
   ButtonStart = wxButton:new(Frame, ?wxID_ANY, [{label, "Start"}]),
 
   %Buttons
-  wxButton:connect(ButtonStart, command_button_clicked, [{callback, fun functionButtonStart/2}, {userData, wx:get_env()}]),
+  wxButton:connect(ButtonStart, command_button_clicked, [{callback, fun handleButtonStart/2}, {userData, #data{env = wx:get_env(), file=FilePickerInput}}]),
 
 
   %R Components
@@ -77,10 +79,14 @@ start() ->
   %%Show Frame
   wxFrame:show(Frame).
 
-functionButtonStart(A,_)->
-  wx:set_env(A#wx.userData),
+handleButtonStart(WxData,_)->
+  %Get the userdata
+  Data=WxData#wx.userData,
+  wx:set_env(Data#data.env),
+  FilePicker = Data#data.file,
+  %Use the info
   Frame = wxFrame:new(wx:null(), ?wxID_ANY, "Print"),
-  Text=io_lib:format("Print the data ~p~n", [A#wx.userData]),
+  Text=io_lib:format("The file is: ~p~n", [wxFilePickerCtrl:getPath(FilePicker)]),
   wxStaticText:new(Frame, ?wxID_ANY, Text),
   wxFrame:show(Frame).
 
