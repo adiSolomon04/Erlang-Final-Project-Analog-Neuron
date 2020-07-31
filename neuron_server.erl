@@ -32,6 +32,12 @@
 start_link() ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+start_supervisor(ListLayerSize, InputFile)->
+  spawn_monitor(neuron_supervisor, start/2, [ListLayerSize, InputFile]).
+
+
+%run_sys(Inputfile) edit input file and send to supervisor.
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -96,3 +102,5 @@ code_change(_OldVsn, State = #neuron_server_state{}, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+
