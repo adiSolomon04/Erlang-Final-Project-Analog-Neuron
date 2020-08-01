@@ -131,43 +131,62 @@ code_change(_OldVsn, StateName, State = #neuron_statem_state{etsTid = _, actType
   {ok, StateName, State}.
 
 %%%===================================================================
+%%% EtsMap - has all neurons' maps that contains the variables of the neurons, the key is the Pid of the neuron.
+%%% Neuron's map keys and values - *Key* ---> *Value* :
+%%%  msgMap ---> A map of received synapses from neurons/Pids in the previous layer, the keys are the Pids
+%%%  and the values are lists that store received synapses from that Pid, the head of the list is the earliest synapse that was received.
+%%%  acc ---> The accumulator of the neuron.
+%%%  pn_generator ---> Pseudo number generator, used for the output calculations for sigmoid activation type.
+%%%  rand_gauss_var ---> Used for the output calculations for sigmoid activation type.
+%%%  leakage_timer ---> Counts the number of pulse cycles following latest leakage step.
+%%%
+%%%
+%%%
+%%%
+%%%
+%%%
+%%%
+%%%
+%%%===================================================================
+
+
+%%%===================================================================
 %%% Internal functions
 %%%===================================================================
-gotBitString(Pid, SynBitString, State= #neuron_statem_state{etsTid = EtsMap, actTypePar=ActType, weightPar=Weight,
+gotBitString(Pid, SynBitString, State= #neuron_statem_state{etsTid = EtsMap, actTypePar=_, weightPar=_,
   biasPar=_, leakageFactorPar=_,
   leakagePeriodPar=_,pidIn =PidIn ,pidOut=_}) ->
   NeuronMap=ets:lookup(EtsMap,self()),
-  PidReceivedMap=maps:get(pidReceivedMap,NeuronMap),
-  Got=maps:get(Pid,PidReceivedMap),
-  if
-    Got==true->ReceivedNeuronMap=NeuronMap;
-    true -> ReceivedNeuronMap=maps:update(pidReceivedMap,maps:update(Pid,true,PidReceivedMap),NeuronMap)
-  end,
-  MsgMap=maps:get(msgMap,ReceivedNeuronMap),
-  NewMsgQueue= maps:get(Pid,MsgMap)++SynBitString,NewNeuronMap=maps:update(msgMap,maps:update(Pid,NewMsgQueue,MsgMap),ReceivedNeuronMap),
+  MsgMap=maps:get(msgMap,NeuronMap),
+  NewMsgQueue= maps:get(Pid,MsgMap)++SynBitString, NewNeuronMap=maps:update(msgMap,maps:update(Pid,NewMsgQueue,MsgMap),NeuronMap),
   IsReady=checkReady(maps:iterator(maps:get(msgMap,NewNeuronMap))),
   if
     IsReady==false ->ets:insert(EtsMap,{self(),NewNeuronMap});
-    true ->InputsMap=getLists(EtsMap,NewNeuronMap,maps:get(msgMap,NewNeuronMap),PidIn,maps:new()),
+    true -> InputsMap=getLists(EtsMap,NewNeuronMap,maps:get(msgMap,NewNeuronMap),PidIn,maps:new()),
            calculations(State#neuron_statem_state{etsTid = EtsMap},InputsMap,size(SynBitString),1,[])
   end, State#neuron_statem_state{etsTid = EtsMap}.
 
 
+
+%%% Checks whether the neuron has got synapses from all neurons from previous layer.
 checkReady(MsgMapIter) when MsgMapIter==none -> true;
 checkReady(MsgMapIter) when MsgMapIter=={_,[],_} -> false;
 checkReady(MsgMapIter) -> checkReady(maps:next(MsgMapIter)).
 
+%%% Calculates the output synapses and sends a bit string of these synapses to the next layer.
 calculations(_,_,NumOfStages,N,Output) when N==NumOfStages+1->Bin=my_list_to_binary(Output),sendToNextLayer(Bin);
 calculations(State= #neuron_statem_state{etsTid = EtsMap, actTypePar=_, weightPar=_,
   biasPar=_, leakageFactorPar=_,
   leakagePeriodPar=_,pidIn =_ ,pidOut=_},InputsMap,NumOfStages,N,Output)-> NewOutput=Output++calcStage(State,InputsMap,N),
   calculations(State= #neuron_statem_state{etsTid = EtsMap},InputsMap,NumOfStages,N+1,NewOutput).
 
+%%% Makes a Map (Pid ---> List of synapses) out of the received synapses and converts the format of the synapses from binary-strings to lists.
 getLists(EtsMap,NeuronMap,_,[],Output) ->ets:insert(EtsMap,{self(),NeuronMap}), Output;
 getLists(EtsMap,NeuronMap,MsgMap,[HPid,TPid],Output) -> [Head|Tail]=maps:get(HPid,MsgMap),
   NewOutput=maps:put(HPid,binary_to_list(Head),Output), NewQ=Tail,
   NewNeuronMap=maps:update(msgMap,maps:update(HPid,NewQ,MsgMap),NeuronMap), getLists(EtsMap,NewNeuronMap,MsgMap,TPid,NewOutput).
 
+%%% Converts List to binary-string.
 my_list_to_binary(List) ->
   my_list_to_binary(List, <<>>).
 
@@ -176,7 +195,8 @@ my_list_to_binary([H|T], Acc) ->
 my_list_to_binary([], Acc) ->
   Acc.
 
-calcStage(State = #neuron_statem_state{etsTid = EtsId, actTypePar=ActType,
+%%% Calculates the output of one "stage" of the input synapses.
+calcStage(_ = #neuron_statem_state{etsTid = EtsId, actTypePar=ActType,
   weightPar=Weight,
   biasPar=Bias, leakageFactorPar=LF,
   leakagePeriodPar=LP,pidIn=PidIn,pidOut=_},InputMap,N)->
@@ -204,15 +224,15 @@ calcStage(State = #neuron_statem_state{etsTid = EtsId, actTypePar=ActType,
   ets:insert(EtsId,{self(),FinalSelfMap}),
   OutputBit.
 
-
+%%% Accumulates the Accumulator of the neuron at the first part of the calculations (Step 1 at cpp code).
 accumulate(_,PidIn,_,_,PidCount,Acc,_) when PidCount==size(PidIn) -> Acc;
-
 accumulate(LF,PidIn,InputMap,N,PidCount,Acc,Weight) ->CurrPid=lists:nth(PidCount,PidIn),
   if
   LF>=3-> NewAcc = Acc+maps:get(CurrPid,Weight)*lists:nth(N,maps:get(CurrPid,InputMap))*math:pow(2,LF-3);
   true -> NewAcc = Acc+maps:get(CurrPid,Weight)*lists:nth(N,maps:get(CurrPid,InputMap))
   end, accumulate(LF,PidIn,InputMap,N,PidCount+1,NewAcc,Weight).
 
+%%% Calculates output according to Identity activation type.
 handleIdentity(EtsId,CurAcc) when CurAcc>32767 ->NewRandVar= 32767,SelfMap=ets:lookup(EtsId,self()),
   ets:insert(EtsId,{self(),maps:update(rand_gauss_var,NewRandVar,SelfMap)}),1;
 handleIdentity(EtsId,CurAcc) when CurAcc < -32767 ->NewRandVar= -32767,SelfMap=ets:lookup(EtsId,self()),
@@ -223,9 +243,11 @@ handleIdentity(EtsId,CurAcc) ->NewRandVar= CurAcc+32768,SelfMap=ets:lookup(EtsId
     true -> ets:insert(EtsId,{self(),maps:update(rand_gauss_var,NewRandVar,SelfMap)}),0
   end.
 
+%%% Calculates output according to Identity Binary Step type.
 handleBinaryStep(CurAcc) when CurAcc>0 -> 1;
 handleBinaryStep(CurAcc) when CurAcc<0 -> 0.
 
+%%% Calculates output according to Identity Sigmoid type.
 handleSigmoid(CurAcc,8,GaussVar,PN_generator) ->Temp=GaussVar band 32768,
                                                        if
                                                          Temp /= 0  -> NewGaussVar=GaussVar band 4,294,901,760;
@@ -240,6 +262,7 @@ handleSigmoid(CurAcc,N,GaussVar,PN_generator) ->
   New_PN_generator=floor(PN_generator/2) bor ((pn_generator band 16384) bxor ((pn_generator band 1)*math:pow(2,14))),
   handleSigmoid(CurAcc,N+1,NewGaussVar,New_PN_generator).
 
+%%% Executes leakage on neuron when needed.
 leak(Acc,LF) when Acc < 0-> Decay_Delta=floor((-Acc)*pow(2,-LF)), if
                                                              Decay_Delta==0 -> 1 ;
                                                              true -> Decay_Delta
