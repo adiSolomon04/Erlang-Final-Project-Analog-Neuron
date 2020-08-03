@@ -7,7 +7,6 @@
 
 -record(data, {env, file}).
 
-
 %% Will get the pid of server
 %% will send the information on button pressing
 start() ->
@@ -31,6 +30,14 @@ start() ->
 
 
   %R Components
+  TextNet = wxStaticText:new(Frame, ?wxID_ANY, "Net Description"), %%?wxID_ANY
+
+  %% panel for picture
+  Panel = wxPanel:new(Frame),
+  %% bitmap
+  PictureDraw = wxImage:new("Erlang_logo.png"),
+  Picture = wxBitmap:new(PictureDraw),
+  wxPanel:connect(Panel, paint, [{callback,fun(WxData, _)->panelPictureUpdate(Picture, WxData)end}]),
 
 
   %3 Components
@@ -44,6 +51,8 @@ start() ->
   Font2 = wxFont:new(18, ?wxFONTFAMILY_ROMAN, ?wxFONTSTYLE_NORMAL, ?wxFONTWEIGHT_NORMAL),
   wxTextCtrl:setFont(TextConfiguration, Font2),
   wxTextCtrl:setFont(TextOutput, Font2),
+  wxTextCtrl:setFont(TextNet, Font2),
+
   Font3 = wxFont:new(12, ?wxFONTFAMILY_ROMAN, ?wxFONTSTYLE_NORMAL, ?wxFONTWEIGHT_NORMAL),
   wxTextCtrl:setFont(TextSetNumNeurons, Font3),
 
@@ -56,10 +65,10 @@ start() ->
   MainSizer3 = wxBoxSizer:new(?wxVERTICAL),
 
   wxSizer:add(MainSizer, TopTxt, [{flag, ?wxALIGN_TOP bor ?wxALIGN_CENTER}, {border, 5}]),
-  wxSizer:add(MainSizer, MainSizer2),
+  wxSizer:add(MainSizer, MainSizer2), %,[{flag, ?wxALIGN_CENTER}]),
   wxSizer:add(MainSizer, MainSizer3),
-  wxSizer:add(MainSizer2, MainSizerL, [{flag, ?wxALIGN_LEFT}, {border, 5}]),
-  wxSizer:add(MainSizer2, MainSizerR, [{flag, ?wxALIGN_RIGHT}, {border, 5}]),
+  wxSizer:add(MainSizer2, MainSizerL, [{border, 5}]),%{flag, ?wxALIGN_LEFT},
+  wxSizer:add(MainSizer2, MainSizerR, [{border, 5}]),%{flag, ?wxALIGN_RIGHT},
 
   %% Assign to L
   lists:foreach(fun(X)-> wxSizer:add(MainSizerL, X, [{flag, ?wxALL bor ?wxEXPAND}, {border, 8}]) end,
@@ -69,7 +78,8 @@ start() ->
   %wxSizer:add(MainSizerL, TextCtrlL, [{flag, ?wxALL bor ?wxEXPAND}, {border, 5}]),
 
   %% Assign to R
-
+  wxSizer:add(MainSizerR, TextNet, [{flag, ?wxALL bor ?wxALIGN_CENTRE }, {border, 8}]),
+  wxSizer:add(MainSizerR, Panel, [{flag, ?wxEXPAND}]),%, {proportion, 1}, {border, 8}]),
 
   %% Assign to 3
   wxSizer:add(MainSizer3, TextOutput, [{flag, ?wxALL bor ?wxALIGN_CENTRE }, {border, 8}]),
@@ -90,6 +100,12 @@ handleButtonStart(WxData,_)->
   wxStaticText:new(Frame, ?wxID_ANY, Text),
   wxFrame:show(Frame).
 
-
+% upload the picture to the panel
+panelPictureUpdate(Picture, #wx{obj =Panel} ) ->
+  %% display picture
+  DC = wxPaintDC:new(Panel),
+  wxDC:drawBitmap(DC, Picture, {0,0}),
+  wxPaintDC:destroy(DC),
+  ok.
 
 
