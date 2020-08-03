@@ -41,7 +41,7 @@ start_link(EtsId, NeuronParameters) ->
 %% gen_statem:start_link/[3,4], this function is called by the new
 %% process to initialize.
 init([EtsId,restore]) ->
-  % emter the parmeters to the ets and record/Parametes
+  % take the parameters from the ets
   {ok, state_name, #neuron_statem_state{etsTid = EtsId, neuronParameters = restore}};
 
 
