@@ -89,7 +89,7 @@ analog_neuron(cast, {Pid,SynaptaBitString}, State = #neuron_statem_state{}) ->
   % do neuron function
   gotBitString(Pid, SynaptaBitString, State),
   NextStateName = analog_neuron,
-  {next_state, NextStateName, State}.
+  {next_state, NextStateName, State};
 
 analog_neuron(cast, fixMessage, State = #neuron_statem_state{}) ->
   % go to repair state

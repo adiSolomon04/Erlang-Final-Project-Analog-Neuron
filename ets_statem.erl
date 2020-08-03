@@ -12,7 +12,7 @@
 -behaviour(gen_statem).
 
 %% API
--export([start_link/3, callChangePid/2, callChangeHeir/1]).
+-export([start_link/4, callChangePid/3, callChangeHeir/2]).
 
 %% gen_statem callbacks
 -export([init/1, format_status/2, handle_event/4, terminate/3,
@@ -30,25 +30,31 @@
 %% initialize. To ensure a synchronized start-up procedure, this
 %% function does not return until Module:init/1 has returned.
 
-%% @param:    the pid of the calling process
+%% @param:    Name_ets_statem the name of the statem (the name it will register)
+%%            the pid of the calling process
 %%            StartState = backup/etsOwner according to this parameter
 %%            PidHeir - in backup -> none, in etsOwner -> the Heir pid
 %%                                   (the pid of the process that will get the table if the process falls)
 %% @returns:  {ok,MyPid}
 %% @sendMessage: if StartState =:= etsOwner -> send {{node(),self()},Tid}
-start_link(Pid_Server,StartState,PidHeir) ->
-  gen_statem:start_link({local, ?SERVER}, ?MODULE, [Pid_Server,StartState,PidHeir], []).
+start_link(Name_ets_statem, Pid_Server, StartState, PidHeir) ->
+  gen_statem:start_link({local, Name_ets_statem}, ?MODULE, [Pid_Server,StartState,PidHeir], []).
 
 %% callChangePid
-%% @param:
+%% @param:    Name_ets_statem the name of the statem (the name it will registered)
 %%            OldPid,NewPid= the Pid of the falling neuron and the new one
 %%            Tid - the state
 %% @sendMessage: replay {MyPlace,{updatePid,NewPid}}
-callChangePid(OldPid,NewPid) ->
-  gen_statem:call(?SERVER,{changePid,{OldPid,NewPid}}).
+callChangePid(Name_ets_statem, OldPid, NewPid) ->
+  gen_statem:call(Name_ets_statem,{changePid,{OldPid,NewPid}}).
 
-callChangeHeir(Heir) ->
-  gen_statem:call(?SERVER,{changeHeir,{Heir}}).
+%% callChangePid
+%% @param:    Name_ets_statem the name of the statem (the name it will registered)
+%%            Heir - the pid of the Heir
+%%            Tid - the state
+%% @sendMessage: replay {MyPlace,{updatePid,NewPid}}
+callChangeHeir(Name_ets_statem, Heir) ->
+  gen_statem:call(Name_ets_statem,{changeHeir,{Heir}}).
 
 %%%===================================================================
 %%% gen_statem callbacks
@@ -73,7 +79,7 @@ init([Pid_Server,backup,none]) ->
 %% @sendMessage: if StartState =:= etsOwner -> send {{node(),self()},Tid}
 init([Pid_Server,etsOwner,PidHeir]) ->
   %%todo: maybe need read/write_concurrency???
-  Tid = ets:new(neurons_data,[set,{heir,PidHeir,none},public]),
+  Tid = ets:new(neurons_data,[set,public,{heir,PidHeir,none}]),
   MyPlace = {node(),self()},
   Pid_Server!{MyPlace,Tid}, %% send the Tid back to the server
   {ok, etsOwnerState, Tid}.
