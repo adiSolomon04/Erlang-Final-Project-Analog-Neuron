@@ -35,7 +35,20 @@ start_link(EtsTid, NeuronParameters) ->
 %%%===================================================================
 %%% gen_statem callbacks
 %%%===================================================================
-\
+
+%% @private
+%% @doc Whenever a gen_statem is started using gen_statem:start/[3,4] or
+%% gen_statem:start_link/[3,4], this function is called by the new
+%% process to initialize.
+init([EtsTid,restore]) ->
+  % take the parameters from the ets
+  NeuronMap=ets:lookup(EtsTid,self());
+  RestoreMap=maps:get(restoreMap,NeuronMap);
+  {ok, state_name, #neuron_statem_state{etsTid = EtsTid, actTypePar=maps:get(actType,RestoreMap),
+   weightPar=maps:get(weight,RestoreMap),
+  biasPar=maps:get(bias,RestoreMap), leakageFactorPar=maps:get(leakageFactor,RestoreMap),
+  leakagePeriodPar=maps:get(leakagePeriod,RestoreMap),pidIn=maps:get(pidIn,RestoreMap),pidOut=maps:get(pidOut,RestoreMap)}};
+
 %% @private
 %% @doc Whenever a gen_statem is started using gen_statem:start/[3,4] or
 %% gen_statem:start_link/[3,4], this function is called by the new
@@ -89,7 +102,13 @@ analog_neuron(cast, {Pid,SynBitString}, State = #neuron_statem_state{etsTid = _,
   leakagePeriodPar=_,pidIn=_,pidOut=_}) ->
   NewState=gotBitString(Pid, SynBitString, State),
   NextStateName = analog_neuron,
-  {next_state, NextStateName, NewState}.
+
+  {next_state, NextStateName, State};
+
+analog_neuron(cast, fixMessage, State = #neuron_statem_state{}) ->
+  % go to repair state
+  NextStateName = hold,
+  {next_state, NextStateName, State}.
 
 hold(cast, {Pid,SynBitString}, State = #neuron_statem_state{etsTid = _, actTypePar=_,
   weightPar=_,
