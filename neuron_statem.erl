@@ -42,8 +42,8 @@ start_link(EtsTid, NeuronParameters) ->
 %% process to initialize.
 init([EtsTid,restore]) ->
   % take the parameters from the ets
-  NeuronMap=ets:lookup(EtsTid,self());
-  RestoreMap=maps:get(restoreMap,NeuronMap);
+  NeuronMap=ets:lookup(EtsTid,self()),
+  RestoreMap=maps:get(restoreMap,NeuronMap),
   {ok, state_name, #neuron_statem_state{etsTid = EtsTid, actTypePar=maps:get(actType,RestoreMap),
    weightPar=maps:get(weight,RestoreMap),
   biasPar=maps:get(bias,RestoreMap), leakageFactorPar=maps:get(leakageFactor,RestoreMap),
