@@ -32,8 +32,8 @@
 start_link() ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-start_supervisor(ListLayerSize, InputFile)->
-  spawn_monitor(neuron_supervisor, start/2, [ListLayerSize, InputFile]).
+%% start_supervisor(ListLayerSize, InputFile)->
+%% spawn_monitor(neuron_supervisor, start/2, [ListLayerSize, InputFile]).
 
 
 %run_sys(Inputfile) edit input file and send to supervisor.
@@ -48,6 +48,7 @@ start_supervisor(ListLayerSize, InputFile)->
   {ok, State :: #neuron_server_state{}} | {ok, State :: #neuron_server_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init([]) ->
+
   {ok, #neuron_server_state{}}.
 
 %% @private
