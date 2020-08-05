@@ -9,38 +9,134 @@
 -module(neuron_supervisor).
 -author("adisolo").
 
-%% API
--export([start/2]).
+-export([start/2, fix_mode_node/1]).
+
+%%%===================================================================
+%%% API
+%%%===================================================================
 
 start(ListLayerSize, InputFile)->
+  % Set as a system process
+  process_flag(trap_exit, true),
+
   NodeNames = [node1, node2, node3, node4],
-  %%Open an ets heir and holders process in every Node
-  %%Save as {Node, {Pid, Ref}} in a EtsProcessHeir, EtsHolders.
 
-  EtsProcessHeir = lists:map(fun(Node)->{Node, spawn_monitor(Node, ets_statem, start_link/3, [self(), backup, none])} end, NodeNames),
-  EtsHolders = lists:map(fun({Node, PidHeir})->{Node, spawn_monitor(Node, ets_statem, start_link/3, [self(), ets_owner, PidHeir])} end, EtsProcessHeir),
+  %% Open an ets heir and holders process in every Node
+  % Save as {Node, Pid} in a EtsProcessHeir, EtsHolders.
+  EtsProcessHeir = lists:map(fun(Node)->{Node, spawn_link(Node, ets_statem, start_link/3, [self(), backup, none])} end, NodeNames),
+  EtsHolders = lists:map(fun({Node, PidHeir})->{Node, spawn_link(Node, ets_statem, start_link/3, [self(), ets_owner, PidHeir])} end, EtsProcessHeir),
+
+  %% Get messages with the Tid from ets processes.
   EtsTid = gatherTid(EtsHolders, []),
-  % Returns [{Node, LayerSize, Tid}...]
-  NodesLayerSize = lists:zip3(NodeNames, ListLayerSize, EtsTid),
-  NeuronProcessLayer = lists:map(fun createLayerNeurons/1, NodesLayerSize).
+  % uses zip: [{Node, LayerSize, Tid},...]
+  % list of {Node, [{Pid,{Node, Tid}},....]}
+  NeuronListPerNode = lists:map(fun createLayerNeurons/1, lists:zip3(NodeNames, ListLayerSize, EtsTid)),
+  net_connect(remove_info(NeuronListPerNode)),
+  %% create two maps of pids.
+  %% One by nodes and pids, and one by pids
+  % Returns #{Node->#{Pid->{Node,Tid}}}
+  MapsPerNode = maps:from_list(lists:map(fun({Node, List}) ->{Node, maps:from_list(List)} end, NeuronListPerNode)),
+  put(pid_per_node, MapsPerNode),
+  MapsOfPid = maps:from_list(sum_all_pid(NeuronListPerNode)),
+  put(pid, MapsOfPid),
+  put(nodes, NodeNames),
+  supervisor().
 
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+supervisor()->
+  receive
+    {'EXIT',Pid, Reason} ->
+      case get(is_fix_mode) of
+        Bool when Bool==false -> rpc:pmap({'neuron_supervisor','fix_mode_node'}, [], maps:to_list(get(pid_per_node)));
+        true -> already_in_fix_mode
+      end,
+      PidList = gatherPid([{Pid, Reason}]),
+      lists:map(restoreNeuron/1, PidList)
+  ;
+    {nodedown, Node} -> need_restart
+  %% Todo: add API of neuron_statem:fix_mode(Pid) ->gen_statem:cast(Pid, fixMessage)
+  end.
 
+%% Get all of the Pid that fell.
+% Returns list of {Pid, Reason} that fell.
+gatherPid(List) ->
+  receive
+    {'EXIT', Pid, Reason} -> gatherPid(List++[{Pid, Reason}])
+      after
+    100 -> done
+  end.
 
-%% start_link all of the neurons.
-%% Returns a list of [{Node1, [N1Pid1, ....]}, {Node2, [N2Pid1, ....]},...]
-createLayerNeurons({Node, LayerSize, Tid})->
-  NeuronList = lists:seq(1, LayerSize),
-  {Node, lists:map(fun(X)-> spawn_monitor(Node, neuron_statem, start_link/3, [Tid, X])  end, NeuronList)}.
-
-
-
+restoreNeuron({Pid,_})->
+  {Node, Tid}= maps:get(Pid, get(pid)).
+%% Gets message with Tid of every ets process.
 gatherTid([{Node, {Pid, _}}|EtsHolders], List)->
   receive
     Tuple={{Node, Pid}, Tid} -> put(Pid, Tuple), gatherTid(EtsHolders, List++[Tid])
   end;
 gatherTid([], List) -> List.
 
+%% start_link all of the neurons.
+%% Returns a list of {Node, [{Pid,{Node,Tid}} ..]}
+createLayerNeurons({Node, LayerSize, Tid})->
+  NeuronParameters = lists:seq(1, LayerSize),
+  % Todo: get the neuron parameters in a map/record and put in the list.
+  % Todo: -record(neuron_statem_state, {etsTid,actTypePar,weightPar,biasPar,leakageFactorPar,leakagePeriodPar,pidIn,pidOut}).
+  {Node, lists:map(fun(X)-> {spawn_link(Node, neuron_statem, start_link/3, [Tid, #{}]), {Node, Tid}}  end, NeuronParameters)}.
 
+%% spawns and monitors a process at node NODE.
+%% returns {Pid, Ref}.
+%% no use.
 spawn_monitor(Node, Module, Func, Args) ->
   {ok, MonitoredPid} = rpc:call(Node, Module, Func, Args),
   {MonitoredPid, monitor(process, MonitoredPid)}.
+
+% lists of {Node1, [Pid, ....]}
+% sends PrevLayer, NextLayer = {Node, List}.
+net_connect(NeuronListPerNode)->
+  net_connect({node(), [self()]},NeuronListPerNode++[{node(), [self()]}]).
+net_connect(Prev,[Curr={Node, ListNeurons}, Next|NextNeuronListPerNode])->
+  lists:foreach(fun(Pid) -> rpc:call(Node, neuron_statem, net_connect/1, [Pid, {Prev,Next}]) end, ListNeurons),
+  net_connect(Curr, Next, NextNeuronListPerNode).
+net_connect(_, _, [])-> done.
+
+  % Todo: add net_connect API of a gen_statem:cast.
+  % Todo: Something like - neuron_statem:net_connect(Pid, Pids)-> gen_statem:cast(Pid, Pids).
+  % Todo: change receiving on neuron_statem:networking to {Node, ListPids}.
+
+%% returns list of {Node, [Pid,...]}
+remove_info(List) ->
+  lists:map(fun({Node, ListNeurons}) -> {Node, lists:map(fun ({Pid, _})-> Pid end, ListNeurons)}end, List).
+
+%% returns list of {Pid, {Node,Tid}}
+sum_all_pid(NeuronListPerNode) ->
+  sum_all_pid(NeuronListPerNode, []).
+sum_all_pid([], List)-> List;
+sum_all_pid([{_, PidTuple}|NeuronListPerNode], List)-> sum_all_pid(NeuronListPerNode, PidTuple++List).
+
+% gets {Node ->#{Pid->{Node, Tid}}
+fix_mode_node({_, Map}) ->
+  ListNeuron = maps:to_list(Map),
+  lists:foreach(fun({Pid, {Node, _}})-> rpc:call(Node,neuron_statem,fix_mode/1,Pid)end, ListNeuron),
+  done.
+  %% uses API of neuron_statem:fix_mode(Pid) ->gen_statem:cast(Pid, fixMessage)
+
+%%%===================================================================
+%%% Testing functions
+%%%===================================================================
+
+%%% tested the monitor - works.
+test_monitor_spawn()->
+  register(me, Pid=spawn(fun()->test_monitor() end)),
+  {ok,Pid}.
+
+test_monitor()->
+  case erlang:whereis(self()) of
+    S when S==undefined -> register(me, self());
+    _ -> nothing
+  end,
+  receive
+    exit -> exiting;
+    Message -> whereis(shell)!Message, test_monitor()
+  end.
