@@ -32,12 +32,12 @@ start() ->
   %R Components
   TextNet = wxStaticText:new(Frame, ?wxID_ANY, "Net Description"), %%?wxID_ANY
 
-  %% panel for picture
-  Panel = wxPanel:new(Frame),
   %% bitmap
   PictureDraw = wxImage:new("Erlang_logo.png"),
   Picture = wxBitmap:new(PictureDraw),
-  wxPanel:connect(Panel, paint, [{callback,fun(WxData, _)->panelPictureUpdate(Picture, WxData)end}]),
+  %% panel for picture
+  Panel = wxPanel:new(Frame, [{size, {wxBitmap:getHeight(Picture), wxBitmap:getWidth(Picture)}}]),
+  wxPanel:connect(Panel, paint, [{callback,fun(WxData, _)->panelPictureUpdate({Frame,PictureDraw}, WxData)end}]),
 
 
   %3 Components
@@ -58,17 +58,21 @@ start() ->
 
 
   %%Sizer Attachment
+  % One big sizer vertical
+  % split to two vertical(1, 2).
+  % split 2 to two horizontal
   MainSizer = wxBoxSizer:new(?wxVERTICAL),
   MainSizer2 = wxBoxSizer:new(?wxHORIZONTAL),
   MainSizerL = wxBoxSizer:new(?wxVERTICAL),
   MainSizerR = wxBoxSizer:new(?wxVERTICAL),
+  %SizeR = wxSizer:fit(MainSizerR, Panel),
   MainSizer3 = wxBoxSizer:new(?wxVERTICAL),
 
   wxSizer:add(MainSizer, TopTxt, [{flag, ?wxALIGN_TOP bor ?wxALIGN_CENTER}, {border, 5}]),
-  wxSizer:add(MainSizer, MainSizer2), %,[{flag, ?wxALIGN_CENTER}]),
+  wxSizer:add(MainSizer, MainSizer2, [{flag, ?wxEXPAND}]), %,[{flag, ?wxALIGN_CENTER}]),
   wxSizer:add(MainSizer, MainSizer3),
   wxSizer:add(MainSizer2, MainSizerL, [{border, 5}]),%{flag, ?wxALIGN_LEFT},
-  wxSizer:add(MainSizer2, MainSizerR, [{border, 5}]),%{flag, ?wxALIGN_RIGHT},
+  wxSizer:add(MainSizer2, MainSizerR, [{border, 5},{flag, ?wxEXPAND}]),%{flag, ?wxALIGN_RIGHT},
 
   %% Assign to L
   lists:foreach(fun(X)-> wxSizer:add(MainSizerL, X, [{flag, ?wxALL bor ?wxEXPAND}, {border, 8}]) end,
@@ -84,10 +88,20 @@ start() ->
   %% Assign to 3
   wxSizer:add(MainSizer3, TextOutput, [{flag, ?wxALL bor ?wxALIGN_CENTRE }, {border, 8}]),
 
+  %wxFrame:connect(Frame, paint, [{callback,
+  %  fun(_Evt, _Obj) ->
+  %    io:format("paint~n"),
+  %    {Width, Height} = wxFrame:getSize(Frame),
+  %    wxImage:scale(PictureDraw, Width, Height),
+%
+  %  end
+  %}]),
 
   wxWindow:setSizer(Frame, MainSizer),
   %%Show Frame
-  wxFrame:show(Frame).
+  wxFrame:show(Frame),
+  %wxSizer:fitInside(MainSizerR, Panel),
+  {wxPanel:isShown(Panel),wxBitmap:ok(Picture)}.
 
 handleButtonStart(WxData,_)->
   %Get the userdata
@@ -101,8 +115,12 @@ handleButtonStart(WxData,_)->
   wxFrame:show(Frame).
 
 % upload the picture to the panel
-panelPictureUpdate(Picture, #wx{obj =Panel} ) ->
+panelPictureUpdate({Frame,PictureDraw}, #wx{obj =Panel} ) ->
+  io:format("paint~n"),
+  {Width, Height} = wxPanel:getSize(Panel),
+  PictureDrawScaled = wxImage:scale(PictureDraw, Width, Height),
   %% display picture
+  Picture = wxBitmap:new(PictureDrawScaled),
   DC = wxPaintDC:new(Panel),
   wxDC:drawBitmap(DC, Picture, {0,0}),
   wxPaintDC:destroy(DC),
