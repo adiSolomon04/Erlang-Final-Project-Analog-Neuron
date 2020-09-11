@@ -9,16 +9,20 @@
 -module(neuron_supervisor).
 -author("adisolo").
 
--export([start/2, fix_mode_node/1]).
+-export([start/3, fix_mode_node/1]).
+
+  %% record for neuron init.
+-record(neuron_statem_state, {etsTid, actTypePar=identity,weightPar,biasPar=0,leakageFactorPar=5,leakagePeriodPar=73,pidIn=[],pidOut=[]}).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
-start(ListLayerSize, InputFile)->
+start(ListLayerSize, NumEts, InputFile)->
   % Set as a system process
   process_flag(trap_exit, true),
 
+  %% todo: will get the nodes from user
   NodeNames = [node1, node2, node3, node4],
 
   %% Open an ets heir and holders process in every Node
@@ -41,6 +45,44 @@ start(ListLayerSize, InputFile)->
   put(pid, MapsOfPid),
   put(nodes, NodeNames),
   supervisor().
+
+
+start_resonator_4stage(nonode, _, Tid) ->
+  Neurons = [{afi1, #neuron_statem_state{etsTid=Tid,weightPar=[11,-9]}},
+    {afi21, #neuron_statem_state{etsTid=Tid,weightPar=[10]}},
+    {afi22, #neuron_statem_state{etsTid=Tid,weightPar=[10]}},
+    {afi23, #neuron_statem_state{etsTid=Tid,weightPar=[10]}}], % afi24, afi25, afi26, afi27,
+   % afb1, afb2, afb3, afb4,
+   % afi31, afi32, afi33, afi34],
+  NeuronName2Pid=lists:map(fun({Name, Record}) -> Pid=spawn_link(neuron_statem, start_link/3, [Tid, Record]), {Name, Pid} end, Neurons),
+  %list neuron name -> pid
+  NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
+  %todo:neuron_statem:pid_config(prev, next).
+  neuron_statem:pid_config(maps:get(afi1, NeuronName2Pid_map), [get(pid_data_sender),maps:get(afi23,NeuronName2Pid_map)],
+    [maps:get(afi21, NeuronName2Pid_map)]),
+  neuron_statem:pid_config(maps:get(afi21, NeuronName2Pid_map), [maps:get(afi1,NeuronName2Pid_map)],
+    [maps:get(afi22, NeuronName2Pid_map)]),
+  neuron_statem:pid_config(maps:get(afi22, NeuronName2Pid_map), [get(pid_data_sender),maps:get(afi21,NeuronName2Pid_map)],
+    [maps:get(afi23, NeuronName2Pid_map)]),
+  neuron_statem:pid_config(maps:get(afi23, NeuronName2Pid_map), [get(pid_data_sender),maps:get(afi1,NeuronName2Pid_map)],
+    [maps:get(afi22, NeuronName2Pid_map)]);
+start_resonator_4stage(onenode, Node, Tid) ->
+  do;
+start_resonator_4stage(fournodes, Nodes, Tid) ->
+  do.
+
+
+
+
+
+
+
+
+%%spawn_neuron(Name) -> Pid = spawn_link(Node, neuron_statem, start_link/3, [Tid, #{}]), {Node, Tid})
+
+
+
+
 
 %%%===================================================================
 %%% Internal functions
