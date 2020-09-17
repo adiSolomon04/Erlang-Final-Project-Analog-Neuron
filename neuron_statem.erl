@@ -12,7 +12,7 @@
 -behaviour(gen_statem).
 
 %% API
--export([start_link/3, pidConfig/3, sendMessage/3]).
+-export([start_link/3, pidConfig/3, sendMessage/4]).
 
 %% gen_statem callbacks
 -export([init/1, format_status/2, state_name/3, handle_event/4, terminate/3,
@@ -36,9 +36,11 @@ pidConfig(Name_neuron_statem,PrevPid,NextPid) ->
   gen_statem:cast(Name_neuron_statem,{PrevPid,NextPid}).
 
 
-sendMessage({final,Name_neuron_statem},SendPid,SynBitString) ->
+sendMessage({final,Name_neuron_statem},SendPid,SynBitString,_) ->
   Name_neuron_statem!{SendPid,SynBitString};
-sendMessage(Name_neuron_statem,SendPid,SynBitString) ->
+sendMessage({finalAcc,Name_neuron_statem},SendPid,_,Acc) ->
+  Name_neuron_statem!{SendPid,Acc};
+sendMessage(Name_neuron_statem,SendPid,SynBitString,_) ->
   gen_statem:cast(Name_neuron_statem,{SendPid,SynBitString}).
 %%%===================================================================
 %%% gen_statem callbacks
@@ -200,22 +202,42 @@ code_change(_OldVsn, StateName, State = #neuron_statem_state{etsTid = _, actType
 %%%===================================================================
 gotBitString(Pid, SynBitString, State= #neuron_statem_state{etsTid = EtsMap, actTypePar=_, weightPar=_,
   biasPar=_, leakageFactorPar=_,
-  leakagePeriodPar=_,pidIn =PidIn ,pidOut=PidOut}) ->
+  leakagePeriodPar=_,pidIn =PidIn ,pidOut=_}) ->EnablePid=lists:nth(1,PidIn), if
+                                                                      (EnablePid/=Pid) or ((EnablePid==Pid) and (SynBitString==<<1>>)) ->NewState=State#neuron_statem_state{etsTid = EtsMap,pidIn =PidIn--[EnablePid]},gotBitStringEnabled(Pid, SynBitString,
+                                                                        NewState,EnablePid) ;
+                                                                    true -> gotBitStringNotEnable(State)
+                                                                  end.
+
+gotBitStringEnabled(Pid, SynBitString, State= #neuron_statem_state{etsTid = EtsMap, actTypePar=_, weightPar=_,
+  biasPar=_, leakageFactorPar=_,
+  leakagePeriodPar=_,pidIn =PidIn ,pidOut=PidOut},EnablePid) ->
+  io:format("PidIn:  ~p \n", [PidIn]),
   Self = self(),
   [{Self,NeuronMap}]=ets:lookup(EtsMap,Self),
   MsgMap=maps:get(msgMap,NeuronMap),
-  io:format("MsgQueue~p    ~p \n",[maps:get(Pid,MsgMap),MsgMap]),
   NewMsgQueue= maps:get(Pid,MsgMap)++[SynBitString], NewNeuronMap=maps:update(msgMap,maps:update(Pid,NewMsgQueue,MsgMap),NeuronMap),
-  io:format("NewMsgQueue~p \n",[NewNeuronMap]),
   IsReady=checkReady(maps:iterator(maps:get(msgMap,NewNeuronMap))),
-  io:format("is ready ~p \n", [IsReady]),
   if
     IsReady==false ->ets:insert(EtsMap,{self(),NewNeuronMap});
     true -> InputsMap=getLists(EtsMap,NewNeuronMap,maps:get(msgMap,NewNeuronMap),PidIn,maps:new()),
-           calculations(State#neuron_statem_state{etsTid = EtsMap,pidOut=PidOut},InputsMap,size(SynBitString),1,[])
-  end, State#neuron_statem_state{etsTid = EtsMap}.
+           calculations(State#neuron_statem_state{etsTid = EtsMap,pidOut=PidOut},InputsMap,size(SynBitString),1,[],[])
+  end, State#neuron_statem_state{etsTid = EtsMap,pidIn = [EnablePid]++PidIn}.
 
-
+gotBitStringNotEnable(State= #neuron_statem_state{etsTid = EtsId, actTypePar=ActType, weightPar=_,
+  biasPar=_, leakageFactorPar=_,
+  leakagePeriodPar=_,pidIn =_ ,pidOut=PidOut}) ->Self = self(),
+  [{Self,NeuronMap}]=ets:lookup(EtsId,Self),
+  Acc=maps:get(acc,NeuronMap),
+  maps:update(msgMap,maps:new(),NeuronMap),
+  case ActType of
+    identity-> OutputBit=handleIdentity(EtsId,Acc);
+    binaryStep-> OutputBit=handleBinaryStep(Acc);
+    sigmoid->  Self = self(),
+      [{Self,SelfMapTest}]=ets:lookup(EtsId,Self),PN_generator=maps:get(pn_generator,SelfMapTest),
+      {OutputBit,NewPnGenerator,NewRandVar}=handleSigmoid(Acc,0,0,PN_generator),
+      UpdatedMap1=maps:update(pn_generator,NewPnGenerator,SelfMapTest),UpdatedMap2=maps:update(rand_gauss_var,NewRandVar,UpdatedMap1),
+      ets:insert(EtsId,{self(),UpdatedMap2})
+  end,Bin=my_list_to_binary([OutputBit]),io:format("Bin:  ~p \n", [Bin]), sendToNextLayer(Bin,PidOut,Acc).
 
 %%% Checks whether the neuron has got synapses from all neurons from previous layer.
 checkReady(MsgMapIter)  -> {_,Value,NewMsgMapIter}=maps:next(MsgMapIter),checkReady(Value,NewMsgMapIter).
@@ -224,10 +246,10 @@ checkReady(Value,_) when Value==[] ->  false;
 checkReady(Value,MsgMapIter) -> {_,NewValue,NewMsgMapIter}=maps:next(MsgMapIter),checkReady(NewValue,NewMsgMapIter).
 
 %%% Calculates the output synapses and sends a bit string of these synapses to the next layer.
-calculations(State= #neuron_statem_state{etsTid = EtsMap,pidOut=PidOut},_,NumOfStages,N,Output) when N==NumOfStages+1 -> Bin=my_list_to_binary(Output),io:format("Bin:  ~p \n", [Bin]), sendToNextLayer(Bin,PidOut); %%Bin,;
-calculations(State= #neuron_statem_state{etsTid = EtsMap,pidOut=PidOut},InputsMap,NumOfStages,N,Output)->
-  NewOutput=Output++[calcStage(State,InputsMap,N)], NewN=N+1,
-  calculations(State,InputsMap,NumOfStages,NewN,NewOutput).
+calculations(State= #neuron_statem_state{etsTid = EtsMap,pidOut=PidOut},_,NumOfStages,N,Output,AccList) when N==NumOfStages+1 -> Bin=my_list_to_binary(Output),io:format("Bin:  ~p \n", [Bin]), sendToNextLayer(Bin,AccList,PidOut); %%Bin,;
+calculations(State= #neuron_statem_state{etsTid = EtsMap,pidOut=PidOut},InputsMap,NumOfStages,N,Output,AccList)->
+  CalcList=calcStage(State,InputsMap,N),NewOutput=Output++[lists:nth(1,CalcList)],NewAccList=AccList++[lists:nth(2,CalcList)], NewN=N+1,
+  calculations(State,InputsMap,NumOfStages,NewN,NewOutput,NewAccList).
 
 %%% Makes a Map (Pid ---> List of synapses) out of the received synapses and converts the format of the synapses from binary-strings to lists.
 getLists(EtsMap,NeuronMap,_,[],Output) ->ets:insert(EtsMap,{self(),NeuronMap}), Output;
@@ -252,8 +274,7 @@ calcStage(_ = #neuron_statem_state{etsTid = EtsId, actTypePar=ActType,
   Self = self(),
   [{Self,NeuronMap}]=ets:lookup(EtsId,Self),
   Acc=maps:get(acc,NeuronMap),
-  io:format("Pid in ~p\n",[PidIn]),
-  io:format("Pid2 in ~p\n",[lists:flatlength(PidIn)]),
+
   SumAcc=accumulate(LF,PidIn,InputMap,N,0,Acc,Weight,length(PidIn)),
   if
     LF>=3-> CurAcc = SumAcc+Bias*math:pow(2,LF-3);
@@ -278,7 +299,7 @@ calcStage(_ = #neuron_statem_state{etsTid = EtsId, actTypePar=ActType,
   UpdatedSelfMap=maps:update(leakage_timer,New_Leakage_Timer,SelfMap),
   FinalSelfMap=maps:update(acc,FinalAcc,UpdatedSelfMap),
   ets:insert(EtsId,{self(),FinalSelfMap}),
-  OutputBit.
+  [OutputBit,FinalAcc].
 
 %%% Accumulates the Accumulator of the neuron at the first part of the calculations (Step 1 at cpp code).
 accumulate(_,_,_,_,PidCount,Acc,_,Size) when PidCount==Size -> Acc;
@@ -329,4 +350,4 @@ leak(Acc,LF) when Acc > 0-> Decay_Delta=-math:floor((Acc)*math:pow(2,-LF)), if
                                                                   end.
 
 
-sendToNextLayer(Bin,PidOut) ->   io:format("ok? ~p\n",[{Bin,PidOut}]),S=self(),lists:foreach(fun(X)->sendMessage(X,S,Bin) end,PidOut).
+sendToNextLayer(Bin,AccList,PidOut) ->   io:format("ok? ~p\n",[{Bin,PidOut}]),S=self(),lists:foreach(fun(X)->sendMessage(X,S,Bin,AccList) end,PidOut).
