@@ -10,19 +10,14 @@
 -author("adisolo").
 
 %% API
--export([wave_gen/0, create_wave/2]).
+-export([create_wave/2]).
+
 
 %%---------------------------------------------------------
 %%      Creating PDM PCM input from PCM file
 %%---------------------------------------------------------
-wave_gen()->
-  cool
-
-  .
-
-
-
-
+pdm_process(FileName, SendingRate, NeuronPid)->
+  sending_pdm_to_first_neuron.
 
 
 %%---------------------------------------------------------
@@ -55,7 +50,6 @@ create_wave(Start_freq, End_freq)->
             _ -> io:format("err in Loops number~n"),
               write_file_loop_avg(0, Sine_freq,  Phase, 1, 10000000, Step, PI2, Clk_freq, Amplitude, Samp_rate_ratio, PCM_file)
           end.
-
 
 
   %% writes sin wave to the pcm file
