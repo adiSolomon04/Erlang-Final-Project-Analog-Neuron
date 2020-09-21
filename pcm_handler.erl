@@ -8,6 +8,7 @@
 %%%-------------------------------------------------------------------
 -module(pcm_handler).
 -author("adisolo").
+-compile(export_all).
 
 %% API
 -export([create_wave/2]).
@@ -24,49 +25,55 @@ pdm_process(FileName, SendingRate, NeuronPid)->
 %%      Creating Our Own PCM sin File
 %%---------------------------------------------------------
 create_wave(Start_freq, End_freq)->
+
+  %% will be input
+  %% file name without '.pcm'
+  FileName = "input_wave",
+
   %% Parameters
   Clk_freq = 1536000,		% Input PDM Clock frequency [Hz]
   Samp_freq = 8000,		% Output PCM Sample frequency [Hz]
-        %Sine_freq=Start_freq,
-        %Phase = 0,
   Amplitude = 1000,
   PI2=6.283185307179586476925286766559, %%2*math:pi(),
   Step = 200000,
   Samp_rate_ratio = round(Clk_freq/Samp_freq + 0.5),
+
   %% Calc first Loop
   Sine_freq =Start_freq+ 1/Step,	% Waveform frequency [Hz]
   Phase = PI2*Sine_freq /(1.0*Clk_freq),
 
-  %% PCM File
-  file:delete("input_wave.pcm"),
-  {_, PCM_file} = file:open("input_wave.pcm", [raw]), %% [append]s for not truncating.
-  {_, PCM_file_1} = file:open("check.txt", [write, raw]),
+  %% File Opening for writing
+  % [write, raw] - deletes the prev content & enables write, writes fast.
+  {ok, PcmFile}= file:open(FileName++".pcm", [write, raw]),
+  {ok, PcmFile_erl}=file:open(FileName++"_erl.pcm", [write, raw]),
 
    case (End_freq-Start_freq)*Step of
             Loops when Loops>0 ->
-              write_file_loop_avg(0, Sine_freq, Phase, 1, Loops, Step, PI2, Clk_freq, Amplitude, Samp_rate_ratio, PCM_file);
+              write_file_loop_avg(0, Sine_freq, Phase, 1, Loops, Step, PI2, Clk_freq, Amplitude, Samp_rate_ratio, FileName);
             0 -> io:format("err in Loops number~n"),
-              write_file_loop_avg(0, Sine_freq,  Phase, 1, 10000000, Step, PI2, Clk_freq, Amplitude, 1, PCM_file);
+              write_file_loop_avg(0, Sine_freq,  Phase, 1, 10000000, Step, PI2, Clk_freq, Amplitude, 1, FileName);
             _ -> io:format("err in Loops number~n"),
-              write_file_loop_avg(0, Sine_freq,  Phase, 1, 10000000, Step, PI2, Clk_freq, Amplitude, Samp_rate_ratio, PCM_file)
-          end.
+              write_file_loop_avg(0, Sine_freq,  Phase, 1, 10000000, Step, PI2, Clk_freq, Amplitude, Samp_rate_ratio, FileName)
+          end,
+  file:close(PcmFile),
+  file:close(PcmFile_erl).
 
 
   %% writes sin wave to the pcm file
   %% sin wave with a changing freq
   %% (starts in Sine_freq, ends in Sin_freq+Step*Loops
 
-  write_file_loop_avg(Samp_sum, _, Phase, Samp_rate_ratio, 0, _, _, _, Amplitude, Samp_rate_ratio, _)->
+  write_file_loop_avg(Samp_sum, _, Phase, Samp_rate_ratio, 0, _, _, _, Amplitude, Samp_rate_ratio, FileName)->
     Sine_wave = Amplitude * math:sin(Phase),
     Samp_in = Sine_wave,
     Samp_write = round((Samp_in+Samp_sum)/Samp_rate_ratio),
-    write_to_file_3bytes(Samp_write),
+    write_to_file_3bytes(Samp_write, FileName),
     doneWriting; %% write to PCM.
 
   write_file_loop_avg(_, _, _, _, 0, _, _, _, _, _, _)->
     doneWriting;
 
-  write_file_loop_avg(Samp_sum, Sine_freq, Phase, Samp_rate_count, Loops, Step, PI2, Clk_freq, Amplitude, Samp_rate_ratio, PCM_file)->
+  write_file_loop_avg(Samp_sum, Sine_freq, Phase, Samp_rate_count, Loops, Step, PI2, Clk_freq, Amplitude, Samp_rate_ratio, FileName)->
     Sine_wave = Amplitude * math:sin(Phase),
     Samp_in = Sine_wave,
     %%io:format("print~p,~p~n",[Samp_rate_count, Samp_rate_ratio]),
@@ -74,7 +81,7 @@ create_wave(Start_freq, End_freq)->
     case Samp_rate_count of
       Samp_rate_ratio ->
         Samp_write = round((Samp_in+Samp_sum)/(1.0*Samp_rate_ratio)),
-        write_to_file_3bytes(Samp_write),
+        write_to_file_3bytes(Samp_write, FileName),
         Samp = 0,
         Count = 1;
       _ ->
@@ -93,36 +100,33 @@ create_wave(Start_freq, End_freq)->
       Clk_freq,
       Amplitude,
       Samp_rate_ratio,
-      PCM_file).
+      FileName).
 
 
+%% writes data to file.
+write_to_file(Samp, FileName) when (Samp<32767) and (Samp>(-32767)) ->
+  write_to_file_3bytes(Samp, FileName),
+  write_to_file_binary(Samp, FileName);
+write_to_file(Samp, FileName) when Samp>32767 ->
+  write_to_file_3bytes(32767, FileName),
+  write_to_file_binary(32767, FileName);
+write_to_file(Samp, FileName) when Samp<(-32767) ->
+  write_to_file_3bytes(-32767, FileName),
+  write_to_file_binary(-32767, FileName).
 
-%% writes data to file. NOT Used
-%% The binary writes int16 as two separate 8bit integers (as two bytes)
-%% for reading need to multiple the 1st byte by 2^8 and
-%% sum with the 2nd byte
-write_to_file(Samp, PCM_file) when (Samp<32767) and (Samp>(-32767)) ->
-  %int16 ,(short) with an amplitude of 1000 sine_wave is between 1000 to -1000 and short sign is 2^15=32768...in range
-  Binary = <<Samp:16/integer>>,
-  %io:format("print ~n~p", [Samp]),
-  file:write_file("input_wave.pcm", Binary, [append]),
-  file:write_file("check.txt", io_lib:format("~p, ~p~n",[Samp, Binary]), [append]);
 
-write_to_file(Samp, PCM_file) when Samp>32767 ->
-  Binary = <<32767:16/integer>>,
-  file:write_file("input_wave.pcm", Binary, [append]);
-
-write_to_file(Samp, PCM_file) when Samp<(-32767) ->
-  Binary = <<-32767:16/integer>>,
-  file:write_file("input_wave.pcm", Binary, [append]).
-
+%%---------------------------------------------------------
+%%      Writing to file functions.
+%% -- write_to_file_3bytes : for use in python
+%% -- write_to_file_binary : for use in erlang
+%%---------------------------------------------------------
 
 %% writes data to file.
 %%%% The binary writes int16 as 3 separate 8bit integers
 %%%% for reading need to multiple the 1st byte by 2^8 and
 %%%% sum with the 2nd byte by 16, sum to third.
 %%%%%% (Need to add '1' to the negatives 1st, 2nd bytes.
-write_to_file_3bytes(Samp)->
+write_to_file_3bytes(Samp, FileName)->
   <<B1:8, B2_tmp:4, B3_tmp:4>> = <<Samp:16/integer>>,
   case Samp of
     _ when Samp<0 ->
@@ -132,6 +136,39 @@ write_to_file_3bytes(Samp)->
       B2= <<0:4, B2_tmp:4>>,
       B3= <<0:4, B3_tmp:4>>
   end,
-  file:write_file("input_wave.pcm", <<B1:8>>, [append]),
-  file:write_file("input_wave.pcm", B2, [append]),
-  file:write_file("input_wave.pcm", B3, [append]).
+  file:write_file(FileName++".pcm", <<B1:8>>, [append]),
+  file:write_file(FileName++".pcm", B2, [append]),
+  file:write_file(FileName++".pcm", B3, [append]).
+
+
+%% writes 4 bytes per integer.
+%% for reading use read(_, 4)
+%% and convert to integer using 'binary_to_integer'
+%%%%%%% Doesnt work for negative numbers.
+write_to_file_binary(Samp, FileName)->
+  A=integer_to_binary(Samp),
+  file:open("try.pcm", [write, raw]),
+  write_zeros(6-byte_size(A), FileName),
+  file:write_file("try.pcm",integer_to_binary(Samp) , [append]),
+  {ok, File}=file:open("try.pcm", [read, raw, binary]),
+  {ok, Data}=file:read(File, 6),
+  file:close(File),
+  binary_to_integer(Data).
+write_zeros(0, FileName) -> done;
+write_zeros(Num, FileName) ->
+  file:write_file("try.pcm",integer_to_binary(0) , [append]),
+  write_zeros(Num-1, FileName).
+
+
+%% writing integers as text,
+%% worked only with 1 term :(
+write_use_consult(Samp)->
+  file:open("try.pcm", [write, raw]),
+  file:write_file("try.pcm",io_lib:format("~p", [Samp]) , [append]),
+  file:write_file("try.pcm", ".",[append]),
+  file:write_file("try.pcm",io_lib:format("~p", [-5]) , [append]),
+  file:write_file("try.pcm", ".",[append]),
+  {ok, File} = file:open("try.pcm", [read]),
+  {ok, Terms}=file:consult("try.pcm"),
+  file:close(File),
+  Terms.
