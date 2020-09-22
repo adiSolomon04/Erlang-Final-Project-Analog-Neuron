@@ -52,10 +52,11 @@ sendToFirstNeuron(Acc,Rand_gauss_var,SendingRate, NeuronPid) ->
   %% send message to the first neuron after SendingRate millisecond
   receive
     wait -> NewNeuronPid=function_wait(NeuronPid),
-      neuron_statem:sendMessage(NewNeuronPid,get(pid_data_sender),Bit),
+      %neuron_statem:sendMessage(NewNeuronPid,get(pid_data_sender),Bit),
       {NeuronPid,NewRand_gauss_var}
     after SendingRate -> NewNeuronPid= NeuronPid,
-      neuron_statem:sendMessage(NeuronPid,get(pid_data_sender),Bit),
+      %neuron_statem:sendMessage(NeuronPid,get(pid_data_sender),Bit),
+      NeuronPid!Bit,
     {NewNeuronPid,NewRand_gauss_var}
   end.
 
@@ -114,7 +115,7 @@ create_wave(Start_freq, End_freq)->
     Sine_wave = Amplitude * math:sin(Phase),
     Samp_in = Sine_wave,
     Samp_write = round((Samp_in+Samp_sum)/Samp_rate_ratio),
-    write_to_file_3bytes(Samp_write, FileName),
+    write_to_file(Samp_write, FileName),
     doneWriting; %% write to PCM.
 
   write_file_loop_avg(_, _, _, _, 0, _, _, _, _, _, _)->
@@ -128,7 +129,7 @@ create_wave(Start_freq, End_freq)->
     case Samp_rate_count of
       Samp_rate_ratio ->
         Samp_write = round((Samp_in+Samp_sum)/(1.0*Samp_rate_ratio)),
-        write_to_file_3bytes(Samp_write, FileName),
+        write_to_file(Samp_write, FileName),
         Samp = 0,
         Count = 1;
       _ ->
@@ -168,7 +169,7 @@ write_to_file(Samp, FileName) when Samp<(-32767) ->
 
 acc_process(FileName) ->
   receive
-    Num -> write_to_file_3bytes(Num, FileName),
+    {_, Num} when is_number(Num)-> write_to_file_3bytes(Num, FileName),
       acc_process(FileName);
     done -> killed
   end.
@@ -202,12 +203,13 @@ write_to_file_3bytes(Samp, FileName)->
 
 %% writing integers as text,
 write_file_consult(Samp,FileName)->
-  file:write_file(FileName+"_erl.pcm",io_lib:format("~p", [Samp]) , [append]),
-  file:write_file(FileName, ".\n",[append]).
+  file:write_file(FileName++"_erl.pcm",io_lib:format("~p", [Samp]) , [append]),
+  file:write_file(FileName++"_erl.pcm", ".\n",[append]).
 
 %% reading integers as text,
+%%% File Name with '.pcm'
 read_file_consult(FileName)->
-  {ok, File} = file:open(FileName+"_erl.pcm", [read]),
+  {ok, File} = file:open(FileName, [read]),
   {ok, Terms}=file:consult(FileName),
   file:close(File),
   Terms.
@@ -225,7 +227,7 @@ write_to_file_binary(Samp, FileName)->
   {ok, Data}=file:read(File, 6),
   file:close(File),
   binary_to_integer(Data).
-write_zeros(0, FileName) -> done;
+write_zeros(0, _) -> done;
 write_zeros(Num, FileName) ->
   file:write_file("try.pcm",integer_to_binary(0) , [append]),
   write_zeros(Num-1, FileName).
