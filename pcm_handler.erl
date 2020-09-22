@@ -17,8 +17,58 @@
 %%---------------------------------------------------------
 %%      Creating PDM PCM input from PCM file
 %%---------------------------------------------------------
+
+%% FileName - the full file name
 pdm_process(FileName, SendingRate, NeuronPid)->
-  sending_pdm_to_first_neuron.
+  Terms = read_use_consult(FileName),
+  foreachMessageSendToFirstNeuron(Terms,0,SendingRate, NeuronPid).
+
+
+foreachMessageSendToFirstNeuron([],_,_, _)->
+  sccefully_send_all_message;
+foreachMessageSendToFirstNeuron([Head|Tail],Rand_gauss_var,SendingRate, NeuronPid)->
+  {NewNeuronPid,NewRand_gauss_var} = sendToFirstNeuron(Head,Rand_gauss_var,SendingRate, NeuronPid),
+  foreachMessageSendToFirstNeuron(Tail,NewRand_gauss_var,SendingRate, NewNeuronPid).
+
+
+sendToFirstNeuron(Acc,Rand_gauss_var,SendingRate, NeuronPid) ->
+  %% translate Number to Bitstring
+  if Acc > 524,288 ->
+    NewAcc=524,288;
+    Acc < -524,288 ->
+      NewAcc=-524,288;
+    true-> NewAcc=Acc
+  end,
+  if NewAcc > 32767 ->
+    Bit = <<1>>,
+    NewRand_gauss_var =32767;
+    NewAcc < -32767 ->
+      Bit = <<0>>,
+      NewRand_gauss_var =-32767;
+    true-> TempRand_gauss_var = Rand_gauss_var +32768 +NewAcc,
+            if TempRand_gauss_var> 65536 -> NewRand_gauss_var =TempRand_gauss_var -65536,
+                                            Bit = <<1>>;
+              true -> NewRand_gauss_var=TempRand_gauss_var,
+                      Bit = <<0>>
+            end
+    end,
+  %% send message to the first neuron after SendingRate millisecond
+  receive
+    wait -> NewNeuronPid=function_wait(NeuronPid),
+      neuron_statem:sendMessage(NewNeuronPid,get(pid_data_sender),Bit),
+      {NeuronPid,NewRand_gauss_var}
+    after SendingRate -> NewNeuronPid= NeuronPid,
+      neuron_statem:sendMessage(NeuronPid,get(pid_data_sender),Bit),
+    {NewNeuronPid,NewRand_gauss_var}
+  end.
+
+
+function_wait(NeuronPid)->
+  receive
+    stopWait ->NeuronPid;
+    {stopWait,NewNeuronPid} ->NewNeuronPid
+
+  end.
 
 
 %%---------------------------------------------------------
@@ -106,13 +156,13 @@ create_wave(Start_freq, End_freq)->
 %% writes data to file.
 write_to_file(Samp, FileName) when (Samp<32767) and (Samp>(-32767)) ->
   write_to_file_3bytes(Samp, FileName),
-  write_to_file_binary(Samp, FileName);
+  write_file_consult(Samp, FileName);
 write_to_file(Samp, FileName) when Samp>32767 ->
   write_to_file_3bytes(32767, FileName),
-  write_to_file_binary(32767, FileName);
+  write_file_consult(32767, FileName);
 write_to_file(Samp, FileName) when Samp<(-32767) ->
   write_to_file_3bytes(-32767, FileName),
-  write_to_file_binary(-32767, FileName).
+  write_file_consult(-32767, FileName).
 
 
 %%---------------------------------------------------------
@@ -159,16 +209,18 @@ write_zeros(Num, FileName) ->
   file:write_file("try.pcm",integer_to_binary(0) , [append]),
   write_zeros(Num-1, FileName).
 
-
 %% writing integers as text,
-%% worked only with 1 term :(
-write_use_consult(Samp)->
-  file:open("try.pcm", [write, raw]),
-  file:write_file("try.pcm",io_lib:format("~p", [Samp]) , [append]),
-  file:write_file("try.pcm", ".",[append]),
-  file:write_file("try.pcm",io_lib:format("~p", [-5]) , [append]),
-  file:write_file("try.pcm", ".",[append]),
-  {ok, File} = file:open("try.pcm", [read]),
-  {ok, Terms}=file:consult("try.pcm"),
+write_file_consult(Samp,FileName)->
+  file:write_file(FileName+"_erl.pcm",io_lib:format("~p", [Samp]) , [append]),
+  file:write_file(FileName, ".\n",[append]).
+
+%% reading integers as text,
+read_use_consult(FileName)->
+  {ok, File} = file:open(FileName, [read]),
+  {ok, Terms}=file:consult(FileName),
   file:close(File),
   Terms.
+
+
+
+
