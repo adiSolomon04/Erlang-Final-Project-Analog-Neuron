@@ -103,19 +103,22 @@ state_name(_EventType, _EventContent, State = #neuron_statem_state{}) ->
   {next_state, NextStateName, State}.
 
 
-  network_config(cast, {PidGetMsg,PidSendMsg}, State = #neuron_statem_state{etsTid = EtsId, actTypePar=ActType,
+network_config(cast, {PidGetMsg,PidSendMsg}, State = #neuron_statem_state{etsTid = EtsId, actTypePar=ActType,
    weightPar=Weight,
   biasPar=Bias, leakageFactorPar=LF,
   leakagePeriodPar=LP,pidIn=_,pidOut=_}) ->
   io:format("~p config!!!",[self()]),
   ListMsgMap = [{X,[]}||X <- PidGetMsg],
   MsgMap = maps:from_list(ListMsgMap),
-  EtsMap = #{msgMap=> MsgMap, acc => 0,pn_generator=>1,rand_gauss_var=>0,leakage_timer=>0},
+  [PidEnabel|EnterPidGetMsg] =PidGetMsg,
+  if PidEnabel==enable-> MsgMapFinal = maps:put(enable,[<<1>>],MsgMap) ;
+      true -> MsgMapFinal = MsgMap
+  end,
+  EtsMap = #{msgMap=> MsgMapFinal, acc => 0,pn_generator=>1,rand_gauss_var=>0,leakage_timer=>0},
   Self = self(),
   ets:insert(EtsId,{Self,EtsMap}),
+   MapWeight = maps:from_list(lists:zip(EnterPidGetMsg,Weight)),
 
-   MapWeight = maps:from_list(lists:zip(PidGetMsg,Weight)),
-    io:format("\n\n\nMapWeight  ~p\n\n\n",[MapWeight]),
 % save the pids
   NextStateName = analog_neuron,
   {next_state, NextStateName, State#neuron_statem_state{etsTid = EtsId, actTypePar=ActType,
@@ -206,6 +209,7 @@ gotBitString(Pid, SynBitString, State= #neuron_statem_state{etsTid = EtsMap, act
   [{Self,NeuronMap}]=ets:lookup(EtsMap,Self),
   MsgMap=maps:get(msgMap,NeuronMap),
   NewMsgQueue= maps:get(Pid,MsgMap)++[SynBitString], NewMsgMap=maps:update(Pid,NewMsgQueue,MsgMap),NewNeuronMap=maps:update(msgMap,NewMsgMap,NeuronMap),
+
   IsReady=checkReady(maps:iterator(maps:get(msgMap,NewNeuronMap))),EnablePid=lists:nth(1,PidIn),
   if
     IsReady==false -> ets:insert(EtsMap,{self(),NewNeuronMap});
@@ -219,7 +223,9 @@ gotBitString(Pid, SynBitString, State= #neuron_statem_state{etsTid = EtsMap, act
            end
   end, if
            EnablePid==enable ->[{Self,Map}]=ets:lookup(EtsMap,Self),Msg=maps:get(msgMap,Map),NewMap=maps:update(msgMap,maps:update(enable,[<<1>>],Msg),Map),
-                                ets:insert(EtsMap,{self(),NewMap});
+
+             ets:insert(EtsMap,{self(),NewMap});
+
            true -> ok
          end.
 
@@ -324,7 +330,7 @@ handleIdentity(EtsId,CurAcc) when CurAcc>32767 ->NewRandVar= 32767,Self = self()
   ets:insert(EtsId,{self(),maps:update(rand_gauss_var,NewRandVar,SelfMap)}),1;
 handleIdentity(EtsId,CurAcc) when CurAcc < -32767 ->NewRandVar= -32767,Self = self(), [{Self,SelfMap}]=ets:lookup(EtsId,Self),
   ets:insert(EtsId,{self(),maps:update(rand_gauss_var,NewRandVar,SelfMap)}),0;
-handleIdentity(EtsId,CurAcc) ->{Self,SelfMap}=ets:lookup(EtsId,self()),RandVar=maps:get(rand_gauss_var,SelfMap),
+handleIdentity(EtsId,CurAcc) ->[{Self,SelfMap}]=ets:lookup(EtsId,self()),RandVar=maps:get(rand_gauss_var,SelfMap),
   NewRandVar= RandVar + CurAcc+32768,Self = self(), [{Self,SelfMap}]=ets:lookup(EtsId,Self),
   if
     NewRandVar >=65536 ->ets:insert(EtsId,{self(),maps:update(rand_gauss_var,65536,SelfMap)}),1 ;

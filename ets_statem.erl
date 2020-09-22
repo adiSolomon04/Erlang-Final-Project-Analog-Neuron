@@ -38,7 +38,7 @@
 %% @returns:  {ok,MyPid}
 %% @sendMessage: if StartState =:= etsOwner -> send {{node(),self()},Tid}
 start_link(Name_ets_statem, Pid_Server, StartState, PidHeir) ->
-  gen_statem:start_link({local, Name_ets_statem}, ?MODULE, [Pid_Server,StartState,PidHeir], []).
+  gen_statem:start_link({local, Name_ets_statem}, ?MODULE, [Pid_Server,Name_ets_statem,StartState,PidHeir], []).
 
 %% callChangePid
 %% @param:    Name_ets_statem the name of the statem (the name it will registered)
@@ -69,7 +69,9 @@ callChangeHeir(Name_ets_statem, Heir) ->
 %% @param:    the pid of the calling process
 %%            StartState = backup
 %%            PidHeir -none
-init([Pid_Server,backup,none]) ->
+init([Pid_Server,Name_ets_statem,backup,none]) ->
+  S = self(),
+  io:format("here1 ~p" ,[S]),
   {ok, backupState, Pid_Server};
 
 %% calls from start_link
@@ -77,7 +79,7 @@ init([Pid_Server,backup,none]) ->
 %%            StartState = etsOwner according to this parameter
 %%            PidHeir - etsOwner -> the Heir pid (the pid of the process that will get the table if the process falls)
 %% @sendMessage: if StartState =:= etsOwner -> send {{node(),self()},Tid}
-init([Pid_Server,etsOwner,PidHeir]) ->
+init([Pid_Server,Name_ets_statem,etsOwner,PidHeir]) ->
   %%todo: maybe need read/write_concurrency???
   Tid = ets:new(neurons_data,[set,public,{heir,PidHeir,none}]),
   MyPlace = {node(),self()},
