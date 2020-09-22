@@ -223,7 +223,7 @@ gotBitStringEnabled(Pid, SynBitString, State= #neuron_statem_state{etsTid = EtsM
            calculations(State#neuron_statem_state{etsTid = EtsMap,pidOut=PidOut},InputsMap,size(SynBitString),1,[],[])
   end, State#neuron_statem_state{etsTid = EtsMap,pidIn = [EnablePid]++PidIn}.
 
-gotBitStringNotEnable(State= #neuron_statem_state{etsTid = EtsId, actTypePar=ActType, weightPar=_,
+gotBitStringNotEnable(_= #neuron_statem_state{etsTid = EtsId, actTypePar=ActType, weightPar=_,
   biasPar=_, leakageFactorPar=_,
   leakagePeriodPar=_,pidIn =_ ,pidOut=PidOut}) ->Self = self(),
   [{Self,NeuronMap}]=ets:lookup(EtsId,Self),
@@ -243,11 +243,11 @@ gotBitStringNotEnable(State= #neuron_statem_state{etsTid = EtsId, actTypePar=Act
 checkReady(MsgMapIter)  -> {_,Value,NewMsgMapIter}=maps:next(MsgMapIter),checkReady(Value,NewMsgMapIter).
 checkReady(Value,MsgMapIter) when MsgMapIter==none ->  Value=/=[];
 checkReady(Value,_) when Value==[] ->  false;
-checkReady(Value,MsgMapIter) -> {_,NewValue,NewMsgMapIter}=maps:next(MsgMapIter),checkReady(NewValue,NewMsgMapIter).
+checkReady(_,MsgMapIter) -> {_,NewValue,NewMsgMapIter}=maps:next(MsgMapIter),checkReady(NewValue,NewMsgMapIter).
 
 %%% Calculates the output synapses and sends a bit string of these synapses to the next layer.
-calculations(State= #neuron_statem_state{etsTid = EtsMap,pidOut=PidOut},_,NumOfStages,N,Output,AccList) when N==NumOfStages+1 -> Bin=my_list_to_binary(Output),io:format("Bin:  ~p \n", [Bin]), sendToNextLayer(Bin,AccList,PidOut); %%Bin,;
-calculations(State= #neuron_statem_state{etsTid = EtsMap,pidOut=PidOut},InputsMap,NumOfStages,N,Output,AccList)->
+calculations(_= #neuron_statem_state{etsTid = _,pidOut=PidOut},_,NumOfStages,N,Output,AccList) when N==NumOfStages+1 -> Bin=my_list_to_binary(Output),io:format("Bin:  ~p \n", [Bin]), sendToNextLayer(Bin,AccList,PidOut); %%Bin,;
+calculations(State= #neuron_statem_state{etsTid = _,pidOut=_},InputsMap,NumOfStages,N,Output,AccList)->
   CalcList=calcStage(State,InputsMap,N),NewOutput=Output++[lists:nth(1,CalcList)],NewAccList=AccList++[lists:nth(2,CalcList)], NewN=N+1,
   calculations(State,InputsMap,NumOfStages,NewN,NewOutput,NewAccList).
 
