@@ -324,7 +324,8 @@ handleIdentity(EtsId,CurAcc) when CurAcc>32767 ->NewRandVar= 32767,Self = self()
   ets:insert(EtsId,{self(),maps:update(rand_gauss_var,NewRandVar,SelfMap)}),1;
 handleIdentity(EtsId,CurAcc) when CurAcc < -32767 ->NewRandVar= -32767,Self = self(), [{Self,SelfMap}]=ets:lookup(EtsId,Self),
   ets:insert(EtsId,{self(),maps:update(rand_gauss_var,NewRandVar,SelfMap)}),0;
-handleIdentity(EtsId,CurAcc) ->NewRandVar= CurAcc+32768,Self = self(), [{Self,SelfMap}]=ets:lookup(EtsId,Self),
+handleIdentity(EtsId,CurAcc) ->{Self,SelfMap}=ets:lookup(EtsId,self()),RandVar=maps:get(rand_gauss_var,SelfMap),
+  NewRandVar= RandVar + CurAcc+32768,Self = self(), [{Self,SelfMap}]=ets:lookup(EtsId,Self),
   if
     NewRandVar >=65536 ->ets:insert(EtsId,{self(),maps:update(rand_gauss_var,65536,SelfMap)}),1 ;
     true -> ets:insert(EtsId,{self(),maps:update(rand_gauss_var,NewRandVar,SelfMap)}),0
