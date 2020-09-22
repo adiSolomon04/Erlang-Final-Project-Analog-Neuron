@@ -13,16 +13,13 @@
 %% API
 -export([create_wave/2]).
 
-
 %%---------------------------------------------------------
 %%      Creating PDM input from PCM file
 %%---------------------------------------------------------
-
 %% FileName - the full file name
 pdm_process(FileName, SendingRate, NeuronPid)->
   Terms = read_file_consult(FileName),
   foreachMessageSendToFirstNeuron(Terms,0,SendingRate, NeuronPid).
-
 
 foreachMessageSendToFirstNeuron([],_,_, _)->
   sccefully_send_all_message;
@@ -166,6 +163,18 @@ write_to_file(Samp, FileName) when Samp<(-32767) ->
 
 
 %%---------------------------------------------------------
+%%      Acc to File Writing - for graph plotting
+%%---------------------------------------------------------
+
+acc_process(FileName) ->
+  receive
+    Num -> write_to_file_3bytes(Num, FileName),
+      acc_process(FileName);
+    done -> killed
+  end.
+
+
+%%---------------------------------------------------------
 %%      Writing, Reading to file functions.
 %% -- write_to_file_3bytes : for use in python
 %% -- write_file_consult, read_file_consult : for use in erlang
@@ -198,7 +207,7 @@ write_file_consult(Samp,FileName)->
 
 %% reading integers as text,
 read_file_consult(FileName)->
-  {ok, File} = file:open(FileName, [read]),
+  {ok, File} = file:open(FileName+"_erl.pcm", [read]),
   {ok, Terms}=file:consult(FileName),
   file:close(File),
   Terms.
