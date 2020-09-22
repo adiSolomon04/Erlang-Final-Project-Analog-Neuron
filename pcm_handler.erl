@@ -15,12 +15,12 @@
 
 
 %%---------------------------------------------------------
-%%      Creating PDM PCM input from PCM file
+%%      Creating PDM input from PCM file
 %%---------------------------------------------------------
 
 %% FileName - the full file name
 pdm_process(FileName, SendingRate, NeuronPid)->
-  Terms = read_use_consult(FileName),
+  Terms = read_file_consult(FileName),
   foreachMessageSendToFirstNeuron(Terms,0,SendingRate, NeuronPid).
 
 
@@ -33,10 +33,10 @@ foreachMessageSendToFirstNeuron([Head|Tail],Rand_gauss_var,SendingRate, NeuronPi
 
 sendToFirstNeuron(Acc,Rand_gauss_var,SendingRate, NeuronPid) ->
   %% translate Number to Bitstring
-  if Acc > 524,288 ->
-    NewAcc=524,288;
-    Acc < -524,288 ->
-      NewAcc=-524,288;
+  if Acc > 524288 ->
+    NewAcc=524288;
+    Acc < -524288 ->
+      NewAcc=-524288;
     true-> NewAcc=Acc
   end,
   if NewAcc > 32767 ->
@@ -166,9 +166,9 @@ write_to_file(Samp, FileName) when Samp<(-32767) ->
 
 
 %%---------------------------------------------------------
-%%      Writing to file functions.
+%%      Writing, Reading to file functions.
 %% -- write_to_file_3bytes : for use in python
-%% -- write_to_file_binary : for use in erlang
+%% -- write_file_consult, read_file_consult : for use in erlang
 %%---------------------------------------------------------
 
 %% writes data to file.
@@ -191,7 +191,19 @@ write_to_file_3bytes(Samp, FileName)->
   file:write_file(FileName++".pcm", B3, [append]).
 
 
-%% writes 4 bytes per integer.
+%% writing integers as text,
+write_file_consult(Samp,FileName)->
+  file:write_file(FileName+"_erl.pcm",io_lib:format("~p", [Samp]) , [append]),
+  file:write_file(FileName, ".\n",[append]).
+
+%% reading integers as text,
+read_file_consult(FileName)->
+  {ok, File} = file:open(FileName, [read]),
+  {ok, Terms}=file:consult(FileName),
+  file:close(File),
+  Terms.
+
+%% writes 4 bytes per integer. NOT USED
 %% for reading use read(_, 4)
 %% and convert to integer using 'binary_to_integer'
 %%%%%%% Doesnt work for negative numbers.
@@ -208,18 +220,6 @@ write_zeros(0, FileName) -> done;
 write_zeros(Num, FileName) ->
   file:write_file("try.pcm",integer_to_binary(0) , [append]),
   write_zeros(Num-1, FileName).
-
-%% writing integers as text,
-write_file_consult(Samp,FileName)->
-  file:write_file(FileName+"_erl.pcm",io_lib:format("~p", [Samp]) , [append]),
-  file:write_file(FileName, ".\n",[append]).
-
-%% reading integers as text,
-read_use_consult(FileName)->
-  {ok, File} = file:open(FileName, [read]),
-  {ok, Terms}=file:consult(FileName),
-  file:close(File),
-  Terms.
 
 
 
