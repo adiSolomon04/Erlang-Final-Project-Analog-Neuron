@@ -202,26 +202,29 @@ code_change(_OldVsn, StateName, State = #neuron_statem_state{etsTid = _, actType
 %%%===================================================================
 gotBitString(Pid, SynBitString, State= #neuron_statem_state{etsTid = EtsMap, actTypePar=_, weightPar=_,
   biasPar=_, leakageFactorPar=_,
-  leakagePeriodPar=_,pidIn =PidIn ,pidOut=_}) ->EnablePid=lists:nth(1,PidIn), if
-                                                                      (EnablePid/=Pid) or ((EnablePid==Pid) and (SynBitString==<<1>>)) ->NewState=State#neuron_statem_state{etsTid = EtsMap,pidIn =PidIn--[EnablePid]},gotBitStringEnabled(Pid, SynBitString,
-                                                                        NewState,EnablePid) ;
-                                                                    true -> gotBitStringNotEnable(State)
-                                                                  end.
-
-gotBitStringEnabled(Pid, SynBitString, State= #neuron_statem_state{etsTid = EtsMap, actTypePar=_, weightPar=_,
-  biasPar=_, leakageFactorPar=_,
-  leakagePeriodPar=_,pidIn =PidIn ,pidOut=PidOut},EnablePid) ->
-  io:format("PidIn:  ~p \n", [PidIn]),
-  Self = self(),
+  leakagePeriodPar=_,pidIn =PidIn ,pidOut=_}) ->  Self = self(),
   [{Self,NeuronMap}]=ets:lookup(EtsMap,Self),
   MsgMap=maps:get(msgMap,NeuronMap),
   NewMsgQueue= maps:get(Pid,MsgMap)++[SynBitString], NewNeuronMap=maps:update(msgMap,maps:update(Pid,NewMsgQueue,MsgMap),NeuronMap),
-  IsReady=checkReady(maps:iterator(maps:get(msgMap,NewNeuronMap))),
+  IsReady=checkReady(maps:iterator(maps:get(msgMap,NewNeuronMap))),EnablePid=lists:nth(1,PidIn),
   if
-    IsReady==false ->ets:insert(EtsMap,{self(),NewNeuronMap});
-    true -> InputsMap=getLists(EtsMap,NewNeuronMap,maps:get(msgMap,NewNeuronMap),PidIn,maps:new()),
-           calculations(State#neuron_statem_state{etsTid = EtsMap,pidOut=PidOut},InputsMap,size(SynBitString),1,[],[])
-  end, State#neuron_statem_state{etsTid = EtsMap,pidIn = [EnablePid]++PidIn}.
+    IsReady==false -> ets:insert(EtsMap,{self(),NewNeuronMap});
+    true ->EnableMsg=lists:nth(1,maps:get(EnablePid,MsgMap)) ,if
+              EnableMsg==<<1>>->NewState=State#neuron_statem_state{etsTid = EtsMap,pidIn =PidIn--[EnablePid]},gotBitStringEnabled(SynBitString,
+               NewState,EnablePid) ;
+             true -> gotBitStringNotEnable(State)
+           end
+  end.
+
+
+gotBitStringEnabled(SynBitString, State= #neuron_statem_state{etsTid = EtsMap, actTypePar=_, weightPar=_,
+  biasPar=_, leakageFactorPar=_,
+  leakagePeriodPar=_,pidIn =PidIn ,pidOut=PidOut},EnablePid) ->
+  Self = self(),
+  [{Self,NeuronMap}]=ets:lookup(EtsMap,Self),
+  InputsMap=getLists(EtsMap,NeuronMap,maps:get(msgMap,NeuronMap),PidIn,maps:new()),
+  calculations(State#neuron_statem_state{etsTid = EtsMap,pidOut=PidOut},InputsMap,size(SynBitString),1,[],[]),
+  State#neuron_statem_state{etsTid = EtsMap,pidIn = [EnablePid]++PidIn}.
 
 gotBitStringNotEnable(_= #neuron_statem_state{etsTid = EtsId, actTypePar=ActType, weightPar=_,
   biasPar=_, leakageFactorPar=_,
