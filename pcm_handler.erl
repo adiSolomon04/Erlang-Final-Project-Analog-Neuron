@@ -17,9 +17,12 @@
 %%      Creating PDM input from PCM file
 %%---------------------------------------------------------
 %% FileName - the full file name
-pdm_process(FileName, SendingRate, NeuronPid)->
+pdm_process(FileName, SendingRate)->
   Terms = read_file_consult(FileName),
-  foreachMessageSendToFirstNeuron(Terms,0,SendingRate, NeuronPid).
+  receive
+    NeuronPid -> foreachMessageSendToFirstNeuron(Terms,0,SendingRate, NeuronPid)
+  end.
+
 
 foreachMessageSendToFirstNeuron([],_,_, _)->
   sccefully_send_all_message;

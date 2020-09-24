@@ -9,7 +9,7 @@
 -module(neuron_supervisor).
 -author("adisolo").
 
--export([start/3, fix_mode_node/1]).
+-export([start/3, fix_mode_node/1, start4neurons/2]).
 
   %% record for neuron init.
 -record(neuron_statem_state, {etsTid, actTypePar=identity,weightPar,biasPar=0,leakageFactorPar=5,leakagePeriodPar=73,pidIn=[],pidOut=[]}).
@@ -47,25 +47,72 @@ start(ListLayerSize, NumEts, InputFile)->
   supervisor().
 
 
+start4neurons(Start_freq, End_freq) ->
+  pcm_handler:create_wave(Start_freq, End_freq),
+  PidAcc = spawn_link(pcm_handler,acc_process/1,["output_wave"]),
+  put(pid_data_getter,PidAcc),
+  PidSender = spawn_link(pcm_handler,pdm_process,["input_wave_erl.pcm", 100]),
+  put(pid_data_sender,PidSender),
+  Tid = ets:new(neurons_data,[set,public]),%% todo:change to ets_statem!!!!!!!!
+  NeuronName2Pid_map=  start_resonator_4stage(nonode, _, Tid),
+  neuron_statem:sendMessage(maps:get(afi1,NeuronName2Pid_map),maps:get(afi23,NeuronName2Pid_map),<<0>>,x),
+  PidSender ! maps:get(afi1,NeuronName2Pid_map),
+  python_comm:plot_graph(plot_acc_vs_freq,["output_wave.pcm",Start_freq])
+.
+
+
+debugResonator_4stage() ->
+  Tid = ets:new(neurons_data,[set,public]),
+  Self = self(),
+  put(pid_data_sender,Self),
+  NeuronName2Pid_map = start_resonator_4stage(nonode,nonode,Tid),
+  receive
+  after 10000 -> io:format("\n\nend wait ~p\n\n",[NeuronName2Pid_map])
+  end,
+  io:format("finish config!!!!!!!!!!!!!"),
+  neuron_statem:sendMessage(maps:get(afi1,NeuronName2Pid_map),get(pid_data_sender),<<1>>,x),
+  receive
+    X -> io:format("1.got ------  ~p\n",[X])
+  after 1000 -> io:format("1.not got\n")
+  end,
+  neuron_statem:sendMessage(maps:get(afi1,NeuronName2Pid_map),maps:get(afi23,NeuronName2Pid_map),<<1>>,x),
+  receive
+    Y -> io:format("2.got ------  ~p\n",[Y])
+  after 1000 -> io:format("2.not got\n")
+  end,
+  neuron_statem:sendMessage(maps:get(afi1,NeuronName2Pid_map),get(pid_data_sender),<<1>>,x),
+  receive
+    Z -> io:format("3.got ------  ~p\n",[Z])
+  after 1000 -> io:format("3.not got\n")
+  end,
+  neuron_statem:sendMessage(maps:get(afi1,NeuronName2Pid_map),get(pid_data_sender),<<0>>,x),
+  receive
+    K-> io:format("3.got ------  ~p\n",[K])
+  after 1000 -> io:format("3.not got\n")
+  end
+.
+
 start_resonator_4stage(nonode, _, Tid) ->
   Neurons = [{afi1, #neuron_statem_state{etsTid=Tid,weightPar=[11,-9]}},
     {afi21, #neuron_statem_state{etsTid=Tid,weightPar=[10]}},
     {afi22, #neuron_statem_state{etsTid=Tid,weightPar=[10]}},
     {afi23, #neuron_statem_state{etsTid=Tid,weightPar=[10]}}], % afi24, afi25, afi26, afi27,
-   % afb1, afb2, afb3, afb4,
-   % afi31, afi32, afi33, afi34],
-  NeuronName2Pid=lists:map(fun({Name, Record}) -> Pid=spawn_link(neuron_statem, start_link/3, [Tid, Record]), {Name, Pid} end, Neurons),
+  % afb1, afb2, afb3, afb4,
+  % afi31, afi32, afi33, afi34],
+  io:format("~p",[Neurons]),
+  NeuronName2Pid=lists:map(fun({Name, Record}) -> {ok,Pid}=neuron_statem:start_link(Name, Tid, Record), {Name, Pid} end, Neurons),
   %list neuron name -> pid
   NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
   %todo:neuron_statem:pid_config(prev, next).
-  neuron_statem:pid_config(maps:get(afi1, NeuronName2Pid_map), [get(pid_data_sender),maps:get(afi23,NeuronName2Pid_map)],
-    [maps:get(afi21, NeuronName2Pid_map)]),
-  neuron_statem:pid_config(maps:get(afi21, NeuronName2Pid_map), [maps:get(afi1,NeuronName2Pid_map)],
+  neuron_statem:pidConfig(maps:get(afi1,NeuronName2Pid_map), [enable,get(pid_data_sender),maps:get(afi23,NeuronName2Pid_map)],
+    [maps:get(afi21, NeuronName2Pid_map),{finalAcc,get(pid_data_getter)}]),
+  neuron_statem:pidConfig(maps:get(afi21,NeuronName2Pid_map), [enable,maps:get(afi1,NeuronName2Pid_map)],
     [maps:get(afi22, NeuronName2Pid_map)]),
-  neuron_statem:pid_config(maps:get(afi22, NeuronName2Pid_map), [get(pid_data_sender),maps:get(afi21,NeuronName2Pid_map)],
+  neuron_statem:pidConfig(maps:get(afi22,NeuronName2Pid_map), [enable,maps:get(afi21,NeuronName2Pid_map)],
     [maps:get(afi23, NeuronName2Pid_map)]),
-  neuron_statem:pid_config(maps:get(afi23, NeuronName2Pid_map), [get(pid_data_sender),maps:get(afi1,NeuronName2Pid_map)],
-    [maps:get(afi22, NeuronName2Pid_map)]);
+  neuron_statem:pidConfig(maps:get(afi23,NeuronName2Pid_map), [enable,maps:get(afi22,NeuronName2Pid_map)],
+    [maps:get(afi1, NeuronName2Pid_map)]),
+  NeuronName2Pid_map;
 start_resonator_4stage(onenode, Node, Tid) ->
   do;
 start_resonator_4stage(fournodes, Nodes, Tid) ->
