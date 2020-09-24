@@ -15,7 +15,6 @@ start() ->
   Frame = wxFrame:new(wx:null(), 1, "Top Frame"),
   TopTxt = wxStaticText:new(Frame, ?wxID_ANY, "Analog Neuron final Project"), %%?wxID_ANY
 
-
   %L Components
   TextConfiguration = wxStaticText:new(Frame, ?wxID_ANY, "Program Configuration"), %%?wxID_ANY
   TextSetNumNeurons = wxStaticText:new(Frame, ?wxID_ANY, "Enter number of Neurons per Layer"), %%?wxID_ANY
