@@ -87,8 +87,8 @@ def plot_acc_vs_freq(file_name, start_freq):
         plt.figure('Figure')
         plt.plot(x[0:len(data)], data)
         plt.xlabel('Frequency[Hz]', fontsize=14)
-        plt.ylabel('Amplitude', fontsize=14)
-        plt.title('Input Freq vs. Time', fontsize=20)
+        plt.ylabel('Acc', fontsize=14)
+        plt.title('Acc vs. Frequency', fontsize=20)
         plt.show()
 
 

@@ -49,16 +49,17 @@ start(ListLayerSize, NumEts, InputFile)->
 
 start4neurons(Start_freq, End_freq) ->
   pcm_handler:create_wave(Start_freq, End_freq),
-  PidAcc = spawn_link(pcm_handler,acc_process/1,["output_wave"]),
+  io:format("here1~n"),
+  PidAcc = spawn(fun()->pcm_handler:acc_process("output_wave")end),
+  io:format("here2~n"),
   put(pid_data_getter,PidAcc),
-  PidSender = spawn_link(pcm_handler,pdm_process,["input_wave_erl.pcm", 100]),
+  PidSender = spawn_link(pcm_handler,pdm_process,["input_wave_erl.pcm", 1]),
   put(pid_data_sender,PidSender),
   Tid = ets:new(neurons_data,[set,public]),%% todo:change to ets_statem!!!!!!!!
-  NeuronName2Pid_map=  start_resonator_4stage(nonode, _, Tid),
+  NeuronName2Pid_map=  start_resonator_4stage(nonode, nonode, Tid),
   neuron_statem:sendMessage(maps:get(afi1,NeuronName2Pid_map),maps:get(afi23,NeuronName2Pid_map),<<0>>,x),
   PidSender ! maps:get(afi1,NeuronName2Pid_map),
-  python_comm:plot_graph(plot_acc_vs_freq,["output_wave.pcm",Start_freq])
-.
+  python_comm:plot_graph(plot_acc_vs_freq,["output_wave.pcm",Start_freq]).
 
 
 debugResonator_4stage() ->

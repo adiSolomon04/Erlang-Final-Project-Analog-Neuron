@@ -55,11 +55,12 @@ sendToFirstNeuron(Acc,Rand_gauss_var,SendingRate, NeuronPid) ->
   %% send message to the first neuron after SendingRate millisecond
   receive
     wait -> NewNeuronPid=function_wait(NeuronPid),
-      %neuron_statem:sendMessage(NewNeuronPid,get(pid_data_sender),Bit),
+      S=self(),
+      neuron_statem:sendMessage(NewNeuronPid,S,Bit, x),
       {NeuronPid,NewRand_gauss_var}
     after SendingRate -> NewNeuronPid= NeuronPid,
-      %neuron_statem:sendMessage(NeuronPid,get(pid_data_sender),Bit),
-      NeuronPid!Bit,
+      S=self(),
+      neuron_statem:sendMessage(NeuronPid,S,Bit, x),
     {NewNeuronPid,NewRand_gauss_var}
   end.
 
@@ -171,12 +172,20 @@ write_to_file(Samp, FileName) when Samp<(-32767) ->
 %%---------------------------------------------------------
 
 acc_process(FileName) ->
+  %%% add open for writing and closing.
+  {ok, PcmFile}= file:open(FileName++".pcm", [write, raw]),
+
+  io:format("here3-in"),
+  acc_loop(FileName),
+  file:close(PcmFile).
+
+acc_loop(FileName)->
   receive
-    {_, Num} when is_number(Num)-> write_to_file_3bytes(Num, FileName),
-      acc_process(FileName);
+    {_, Num} when is_number(Num)->   io:format("acc, ~p~n", [Num]),
+      write_to_file_3bytes(Num, FileName),
+      acc_loop(FileName);
     done -> killed
   end.
-
 
 %%---------------------------------------------------------
 %%      Writing, Reading to file functions.
