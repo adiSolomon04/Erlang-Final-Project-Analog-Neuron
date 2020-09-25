@@ -39,6 +39,7 @@ pidConfig(Name_neuron_statem,PrevPid,NextPid) ->
 sendMessage({final,Name_neuron_statem},SendPid,SynBitString,_) ->
   Name_neuron_statem!{SendPid,SynBitString};
 sendMessage({finalAcc,Name_neuron_statem},SendPid,_,Acc) ->
+  io:format("Acc~p",[Acc]),
   Name_neuron_statem!{SendPid,Acc};
 sendMessage(Name_neuron_statem,SendPid,SynBitString,_) ->
   gen_statem:cast(Name_neuron_statem,{SendPid,SynBitString}).
@@ -217,7 +218,8 @@ gotBitString(Pid, SynBitString, State= #neuron_statem_state{etsTid = EtsMap, act
            [EnableMsg|EnableList]=maps:get(EnablePid,MsgMap),NewMsgMapEnable=maps:update(EnablePid,EnableList,NewMsgMap),NewMapUpdated=maps:update(msgMap,NewMsgMapEnable,NewNeuronMap),
             ets:insert(EtsMap,{self(),NewMapUpdated}),
            if
-              EnableMsg==<<1>>->io:format("NewMsgMapEnable:  ~p \n", [NewMsgMapEnable]),NewState=State#neuron_statem_state{etsTid = EtsMap,pidIn =PidIn--[EnablePid]},gotBitStringEnabled(SynBitString,
+              EnableMsg==<<1>>->%io:format("NewMsgMapEnable:  ~p \n", [NewMsgMapEnable]),
+                NewState=State#neuron_statem_state{etsTid = EtsMap,pidIn =PidIn--[EnablePid]},gotBitStringEnabled(SynBitString,
                NewState,EnablePid);
               true -> NewState=State#neuron_statem_state{etsTid = EtsMap},gotBitStringNotEnable(NewState)
            end
@@ -253,7 +255,8 @@ gotBitStringNotEnable(_= #neuron_statem_state{etsTid = EtsId, actTypePar=ActType
       {OutputBit,NewPnGenerator,NewRandVar}=handleSigmoid(Acc,0,0,PN_generator),
       UpdatedMap1=maps:update(pn_generator,NewPnGenerator,SelfMapTest),UpdatedMap2=maps:update(rand_gauss_var,NewRandVar,UpdatedMap1),
       ets:insert(EtsId,{self(),UpdatedMap2})
-  end,Bin=my_list_to_binary([OutputBit]),io:format("Bin:  ~p \n", [Bin]), sendToNextLayer(Bin,PidOut,Acc).
+  end,Bin=my_list_to_binary([OutputBit]),%io:format("Bin:  ~p \n", [Bin]),
+  sendToNextLayer(Bin,PidOut,Acc).
 
 %%% Checks whether the neuron has got synapses from all neurons from previous layer.
 checkReady(MsgMapIter)  -> {_,Value,NewMsgMapIter}=maps:next(MsgMapIter),checkReady(Value,NewMsgMapIter).
@@ -262,7 +265,8 @@ checkReady(Value,_) when Value==[] ->  false;
 checkReady(_,MsgMapIter) -> {_,NewValue,NewMsgMapIter}=maps:next(MsgMapIter),checkReady(NewValue,NewMsgMapIter).
 
 %%% Calculates the output synapses and sends a bit string of these synapses to the next layer.
-calculations(_= #neuron_statem_state{etsTid = _,pidOut=PidOut},_,NumOfStages,N,Output,AccList) when N==NumOfStages+1 -> Bin=my_list_to_binary(Output),io:format("Bin:  ~p \n", [Bin]), sendToNextLayer(Bin,AccList,PidOut); %%Bin,;
+calculations(_= #neuron_statem_state{etsTid = _,pidOut=PidOut},_,NumOfStages,N,Output,AccList) when N==NumOfStages+1 -> Bin=my_list_to_binary(Output),%io:format("Bin:  ~p \n", [Bin]),
+  sendToNextLayer(Bin,AccList,PidOut); %%Bin,;
 calculations(State= #neuron_statem_state{etsTid = _,pidOut=_},InputsMap,NumOfStages,N,Output,AccList)->
   CalcList=calcStage(State,InputsMap,N),NewOutput=Output++[lists:nth(1,CalcList)],NewAccList=AccList++[lists:nth(2,CalcList)], NewN=N+1,
   calculations(State,InputsMap,NumOfStages,NewN,NewOutput,NewAccList).
@@ -367,4 +371,5 @@ leak(Acc,LF) when Acc > 0-> Decay_Delta=-math:floor((Acc)*math:pow(2,-LF)), if
                                                                   end.
 
 
-sendToNextLayer(Bin,AccList,PidOut) ->   io:format("ok? ~p\n",[{Bin,PidOut}]),S=self(),lists:foreach(fun(X)->sendMessage(X,S,Bin,AccList) end,PidOut).
+sendToNextLayer(Bin,AccList,PidOut) ->  % io:format("ok? ~p\n",[{Bin,PidOut}]),
+  S=self(),lists:foreach(fun(X)->sendMessage(X,S,Bin,AccList) end,PidOut).

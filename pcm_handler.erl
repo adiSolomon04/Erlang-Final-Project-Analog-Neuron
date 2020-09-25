@@ -180,9 +180,12 @@ acc_process(FileName) ->
   file:close(PcmFile).
 
 acc_loop(FileName)->
+  io:format("here4-in"),
+
   receive
-    {_, Num} when is_number(Num)->   io:format("acc, ~p~n", [Num]),
-      write_to_file_3bytes(Num, FileName),
+    {_, [Num]} when is_number(Num)->    io:format("here5-in"),
+      io:format("acc, ~p~n", [Num]),
+      write_to_file_3bytes(round(Num), FileName),
       acc_loop(FileName);
     done -> killed
   end.
