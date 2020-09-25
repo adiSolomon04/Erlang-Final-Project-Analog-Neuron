@@ -9,7 +9,7 @@
 -module(neuron_supervisor).
 -author("adisolo").
 
--export([start/3, fix_mode_node/1, start4neurons/2]).
+-export([start/3, fix_mode_node/1, start4neurons/0]).
 
   %% record for neuron init.
 -record(neuron_statem_state, {etsTid, actTypePar=identity,weightPar,biasPar=0,leakageFactorPar=5,leakagePeriodPar=73,pidIn=[],pidOut=[]}).
@@ -47,11 +47,12 @@ start(ListLayerSize, NumEts, InputFile)->
   supervisor().
 
 
-start4neurons(Start_freq, End_freq) ->
+start4neurons() ->
 
   %pcm_handler:create_wave(Start_freq, End_freq, 1),
   io:format("here1~n"),
-  PidAcc = spawn(fun()->pcm_handler:acc_process("output_wave")end),
+  PidTiming = spawn(fun()->pcm_handler:timing_process(self())end),
+  PidAcc = spawn(fun()->pcm_handler:acc_process("output_wave", PidTiming)end),
   io:format("here2~n"),
   put(pid_data_getter,PidAcc),
   PidSender = spawn_link(pcm_handler,pdm_process,["input_wave_erl.pcm", 1]),
@@ -59,8 +60,8 @@ start4neurons(Start_freq, End_freq) ->
   Tid = ets:new(neurons_data,[set,public]),%% todo:change to ets_statem!!!!!!!!
   NeuronName2Pid_map=  start_resonator_4stage(nonode, nonode, Tid),
   neuron_statem:sendMessage(maps:get(afi1,NeuronName2Pid_map),maps:get(afi23,NeuronName2Pid_map),<<0>>,x),
-  PidSender ! maps:get(afi1,NeuronName2Pid_map),
-  python_comm:plot_graph(plot_acc_vs_freq,["output_wave.pcm",Start_freq]).
+  PidSender ! maps:get(afi1,NeuronName2Pid_map).
+  %python_comm:plot_graph(plot_acc_vs_freq,["output_wave.pcm",Start_freq]).
 
 
 debugResonator_4stage() ->
@@ -95,10 +96,10 @@ debugResonator_4stage() ->
 .
 
 start_resonator_4stage(nonode, _, Tid) ->
-  Neurons = [{afi1, #neuron_statem_state{etsTid=Tid,weightPar=[11,-9]}},
-    {afi21, #neuron_statem_state{etsTid=Tid,weightPar=[10]}},
-    {afi22, #neuron_statem_state{etsTid=Tid,weightPar=[10]}},
-    {afi23, #neuron_statem_state{etsTid=Tid,weightPar=[10]}}], % afi24, afi25, afi26, afi27,
+  Neurons = [{afi1, #neuron_statem_state{etsTid=Tid,weightPar=[11,-9], biasPar=-1}},
+    {afi21, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
+    {afi22, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
+    {afi23, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}}], % afi24, afi25, afi26, afi27,
   % afb1, afb2, afb3, afb4,
   % afi31, afi32, afi33, afi34],
   io:format("~p",[Neurons]),
