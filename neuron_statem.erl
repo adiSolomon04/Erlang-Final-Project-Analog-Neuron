@@ -256,7 +256,8 @@ gotBitStringNotEnable(_= #neuron_statem_state{etsTid = EtsId, actTypePar=ActType
       UpdatedMap1=maps:update(pn_generator,NewPnGenerator,SelfMapTest),UpdatedMap2=maps:update(rand_gauss_var,NewRandVar,UpdatedMap1),
       ets:insert(EtsId,{self(),UpdatedMap2})
   end,Bin=my_list_to_binary([OutputBit]),%io:format("Bin:  ~p \n", [Bin]),
-  sendToNextLayer(Bin,PidOut,Acc).
+  sendToNextLayer(Bin,[Acc],PidOut).
+
 
 %%% Checks whether the neuron has got synapses from all neurons from previous layer.
 checkReady(MsgMapIter)  -> {_,Value,NewMsgMapIter}=maps:next(MsgMapIter),checkReady(Value,NewMsgMapIter).
@@ -335,9 +336,10 @@ handleIdentity(EtsId,CurAcc) when CurAcc>32767 ->NewRandVar= 32767,Self = self()
 handleIdentity(EtsId,CurAcc) when CurAcc < -32767 ->NewRandVar= -32767,Self = self(), [{Self,SelfMap}]=ets:lookup(EtsId,Self),
   ets:insert(EtsId,{self(),maps:update(rand_gauss_var,NewRandVar,SelfMap)}),0;
 handleIdentity(EtsId,CurAcc) ->[{Self,SelfMap}]=ets:lookup(EtsId,self()),RandVar=maps:get(rand_gauss_var,SelfMap),
+
   NewRandVar= RandVar + CurAcc+32768,Self = self(), [{Self,SelfMap}]=ets:lookup(EtsId,Self),
   if
-    NewRandVar >=65536 ->ets:insert(EtsId,{self(),maps:update(rand_gauss_var,65536,SelfMap)}),1 ;
+    NewRandVar >=65536 ->ets:insert(EtsId,{self(),maps:update(rand_gauss_var,NewRandVar-65536,SelfMap)}),1 ;
     true -> ets:insert(EtsId,{self(),maps:update(rand_gauss_var,NewRandVar,SelfMap)}),0
   end.
 
