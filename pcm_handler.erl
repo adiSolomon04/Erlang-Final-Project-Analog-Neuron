@@ -26,6 +26,7 @@ pdm_process(FileName, SendingRate)->
 
 foreachMessageSendToFirstNeuron([],_,_, _)->
   io:format("sent all messages\n"),
+  os:cmd("notify-send Task complete_succesfully"),
   sccefully_send_all_message;
 foreachMessageSendToFirstNeuron([Head|Tail],Rand_gauss_var,SendingRate, NeuronPid)->
   {NewNeuronPid,NewRand_gauss_var} = sendToFirstNeuron(Head,Rand_gauss_var,SendingRate, NeuronPid),
@@ -168,13 +169,13 @@ create_wave(Start_freq, End_freq, Samp_rate)->
 
 %% writes data to file.
 write_to_file(Samp, FileName) when (Samp<32767) and (Samp>(-32767)) ->
-  write_to_file_3bytes(Samp, FileName),
+  %write_to_file_3bytes(Samp, FileName),
   write_file_consult(Samp, FileName);
 write_to_file(Samp, FileName) when Samp>32767 ->
-  write_to_file_3bytes(32767, FileName),
+  %write_to_file_3bytes(32767, FileName),
   write_file_consult(32767, FileName);
 write_to_file(Samp, FileName) when Samp<(-32767) ->
-  write_to_file_3bytes(-32767, FileName),
+  %write_to_file_3bytes(-32767, FileName),
   write_file_consult(-32767, FileName).
 
 
@@ -194,10 +195,49 @@ acc_loop(FileName)->
   receive
     {_, [Num]} when is_number(Num)->
       write_to_file_3bytes(round(Num), FileName),
-      io:format("acc ~p~n", [round(Num)]),
+      %io:format("acc ~p~n", [round(Num)]),
       acc_loop(FileName);
     done -> killed
   end.
+
+%% Same, But sends bit to timing process.
+acc_process(FileName, Pid_timing) ->
+  %%% add open for writing and closing.
+  {ok, PcmFile}= file:open(FileName++".pcm", [write, raw]),
+
+  acc_loop(FileName, Pid_timing),
+  file:close(PcmFile).
+
+acc_loop(FileName, Pid_timing)->
+
+  receive
+    {_, [Num]} when is_number(Num)->
+      write_to_file_3bytes(round(Num), FileName),
+      Pid_timing!<<1>>,
+      %io:format("acc ~p~n", [round(Num)]),
+      acc_loop(FileName, Pid_timing);
+    done -> killed
+  end.
+
+
+%%---------------------------------------------------------
+%%      Timing process
+%%---------------------------------------------------------
+% used for determining time passing.
+% will be used in the future for wx process.
+% will tell us that there are sill computations
+timing_process(Pid_wx)->
+  Time = erlang:timestamp(),
+  timing_loop(Pid_wx, Time).
+
+timing_loop(Pid, Time)->
+  receive
+    _ -> case timer:now_diff(erlang:timestamp(), Time) of
+              Diff when Diff >1000000 -> io:format("1 second passed~p~n",[Diff]), timing_loop(Pid, erlang:timestamp());
+             _ -> timing_loop(Pid, Time)
+         end
+  end.
+
 
 %%---------------------------------------------------------
 %%      Writing, Reading to file functions.
