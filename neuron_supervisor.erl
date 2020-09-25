@@ -48,7 +48,8 @@ start(ListLayerSize, NumEts, InputFile)->
 
 
 start4neurons(Start_freq, End_freq) ->
-  pcm_handler:create_wave(Start_freq, End_freq),
+
+  %pcm_handler:create_wave(Start_freq, End_freq, 1),
   io:format("here1~n"),
   PidAcc = spawn(fun()->pcm_handler:acc_process("output_wave")end),
   io:format("here2~n"),

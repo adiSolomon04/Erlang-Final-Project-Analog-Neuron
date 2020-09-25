@@ -11,7 +11,7 @@
 -compile(export_all).
 
 %% API
--export([create_wave/2]).
+-export([create_wave/3]).
 
 %%---------------------------------------------------------
 %%      Creating PDM input from PCM file
@@ -25,6 +25,7 @@ pdm_process(FileName, SendingRate)->
 
 
 foreachMessageSendToFirstNeuron([],_,_, _)->
+  io:format("sent all messages\n"),
   sccefully_send_all_message;
 foreachMessageSendToFirstNeuron([Head|Tail],Rand_gauss_var,SendingRate, NeuronPid)->
   {NewNeuronPid,NewRand_gauss_var} = sendToFirstNeuron(Head,Rand_gauss_var,SendingRate, NeuronPid),
@@ -76,7 +77,13 @@ function_wait(NeuronPid)->
 %%---------------------------------------------------------
 %%      Creating Our Own PCM sin File
 %%---------------------------------------------------------
-create_wave(Start_freq, End_freq)->
+
+%%%%% OPTIONAL Distribute Sine creations
+%% Can get a list of output files and write to multiple files.
+%% Use a gather function at the end.
+%% Number of writes total: (End-Start)*200,000 /Samp Rate.
+
+create_wave(Start_freq, End_freq, Samp_rate)->
 
   %% will be input
   %% file name without '.pcm'
@@ -89,7 +96,6 @@ create_wave(Start_freq, End_freq)->
   PI2=6.283185307179586476925286766559, %%2*math:pi(),
   Step = 200000,
   Samp_rate_ratio = round(Clk_freq/Samp_freq + 0.5),
-
   %% Calc first Loop
   Sine_freq =Start_freq+ 1/Step,	% Waveform frequency [Hz]
   Phase = PI2*Sine_freq /(1.0*Clk_freq),
@@ -101,8 +107,12 @@ create_wave(Start_freq, End_freq)->
 
    case (End_freq-Start_freq)*Step of
             Loops when Loops>0 ->
-              write_file_loop_avg(0, Sine_freq, Phase, 1, Loops, Step, PI2, Clk_freq, Amplitude, Samp_rate_ratio, FileName);
-            0 -> io:format("err in Loops number~n"),
+              io:format("~p~n", [Loops]),
+              write_file_loop_avg(0, Sine_freq, Phase, 1, Loops, Step, PI2, Clk_freq, Amplitude, case Samp_rate of
+                                                                                                   0 -> Samp_rate_ratio;
+                                                                                                   _ -> Samp_rate
+                                                                                                 end, FileName);
+            0 -> io:format("Running 1,000,000 Loops wuth Samp_rate as 1~n"),
               write_file_loop_avg(0, Sine_freq,  Phase, 1, 10000000, Step, PI2, Clk_freq, Amplitude, 1, FileName);
             _ -> io:format("err in Loops number~n"),
               write_file_loop_avg(0, Sine_freq,  Phase, 1, 10000000, Step, PI2, Clk_freq, Amplitude, Samp_rate_ratio, FileName)
@@ -132,6 +142,7 @@ create_wave(Start_freq, End_freq)->
     %io:format("~p~n",[Samp_rate_ratio]),
     case Samp_rate_count of
       Samp_rate_ratio ->
+        io:format("print ~p~n", [Loops]),
         Samp_write = round((Samp_in+Samp_sum)/(1.0*Samp_rate_ratio)),
         write_to_file(Samp_write, FileName),
         Samp = 0,
@@ -175,17 +186,15 @@ acc_process(FileName) ->
   %%% add open for writing and closing.
   {ok, PcmFile}= file:open(FileName++".pcm", [write, raw]),
 
-  io:format("here3-in"),
   acc_loop(FileName),
   file:close(PcmFile).
 
 acc_loop(FileName)->
-  io:format("here4-in"),
 
   receive
-    {_, [Num]} when is_number(Num)->    io:format("here5-in"),
-      io:format("acc, ~p~n", [Num]),
+    {_, [Num]} when is_number(Num)->
       write_to_file_3bytes(round(Num), FileName),
+      io:format("acc ~p~n", [round(Num)]),
       acc_loop(FileName);
     done -> killed
   end.
