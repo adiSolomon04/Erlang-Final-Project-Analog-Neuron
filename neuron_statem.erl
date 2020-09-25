@@ -39,7 +39,7 @@ pidConfig(Name_neuron_statem,PrevPid,NextPid) ->
 sendMessage({final,Name_neuron_statem},SendPid,SynBitString,_) ->
   Name_neuron_statem!{SendPid,SynBitString};
 sendMessage({finalAcc,Name_neuron_statem},SendPid,_,Acc) ->
-  io:format("Acc~p",[Acc]),
+  %io:format("Acc~p",[Acc]),
   Name_neuron_statem!{SendPid,Acc};
 sendMessage(Name_neuron_statem,SendPid,SynBitString,_) ->
   gen_statem:cast(Name_neuron_statem,{SendPid,SynBitString}).
@@ -367,7 +367,7 @@ leak(Acc,LF) when Acc < 0-> Decay_Delta=math:floor((-Acc)*math:pow(2,-LF)), if
                                                              Decay_Delta==0 -> 1 ;
                                                              true -> Decay_Delta
                                                            end;
-leak(Acc,LF) when Acc > 0-> Decay_Delta=-math:floor((Acc)*math:pow(2,-LF)), if
+leak(Acc,LF) when Acc >= 0-> Decay_Delta=-math:floor((Acc)*math:pow(2,-LF)), if
                                                                     (Decay_Delta==0) and (Acc /= 0) -> 1;
                                                                     true -> Decay_Delta
                                                                   end.
