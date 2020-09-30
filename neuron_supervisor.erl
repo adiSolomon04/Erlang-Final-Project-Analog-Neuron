@@ -9,7 +9,7 @@
 -module(neuron_supervisor).
 -author("adisolo").
 
--export([start/3, fix_mode_node/1, start4neurons/0]).
+-export([start/3, fix_mode_node/1, start4neurons/0, start4neurons/1]).
 
   %% record for neuron init.
 -record(neuron_statem_state, {etsTid, actTypePar=identity,weightPar,biasPar=0,leakageFactorPar=5,leakagePeriodPar=73,pidIn=[],pidOut=[]}).
@@ -32,6 +32,7 @@ start(ListLayerSize, NumEts, InputFile)->
 
   %% Get messages with the Tid from ets processes.
   EtsTid = gatherTid(EtsHolders, []),
+
   % uses zip: [{Node, LayerSize, Tid},...]
   % list of {Node, [{Pid,{Node, Tid}},....]}
   NeuronListPerNode = lists:map(fun createLayerNeurons/1, lists:zip3(NodeNames, ListLayerSize, EtsTid)),
@@ -46,20 +47,35 @@ start(ListLayerSize, NumEts, InputFile)->
   put(nodes, NodeNames),
   supervisor().
 
-
-start4neurons() ->
+start4neurons(Semp) ->
 
   %pcm_handler:create_wave(Start_freq, End_freq, 1),
   io:format("here1~n"),
   PidTiming = spawn(fun()->pcm_handler:timing_process(self())end),
-  PidAcc = spawn(fun()->pcm_handler:acc_process("output_wave", PidTiming)end),
+  PidSender = spawn_link(pcm_handler,pdm_process,[Semp, 40]),
+  put(pid_data_sender,PidSender),
+  PidAcc = spawn(fun()->pcm_handler:acc_process("output_wave", PidTiming,PidSender)end),
   io:format("here2~n"),
   put(pid_data_getter,PidAcc),
-  PidSender = spawn_link(pcm_handler,pdm_process,["input_wave_erl.pcm", 1]),
-  put(pid_data_sender,PidSender),
   Tid = ets:new(neurons_data,[set,public]),%% todo:change to ets_statem!!!!!!!!
   NeuronName2Pid_map=  start_resonator_4stage(nonode, nonode, Tid),
-  neuron_statem:sendMessage(maps:get(afi1,NeuronName2Pid_map),maps:get(afi23,NeuronName2Pid_map),<<0>>,x),
+  neuron_statem:sendMessage(maps:get(afi1,NeuronName2Pid_map),maps:get(afi23,NeuronName2Pid_map),<<1>>,x),
+  PidSender ! maps:get(afi1,NeuronName2Pid_map).
+%python_comm:plot_graph(plot_acc_vs_freq,["output_wave.pcm",Start_freq]).
+
+  start4neurons() ->
+
+  %pcm_handler:create_wave(Start_freq, End_freq, 1),
+  io:format("here1~n"),
+  PidTiming = spawn(fun()->pcm_handler:timing_process(self())end),
+  PidSender = spawn_link(pcm_handler,pdm_process,["input_wave_erl.pcm", 40]),
+  put(pid_data_sender,PidSender),
+  PidAcc = spawn(fun()->pcm_handler:acc_process("output_wave", PidTiming,PidSender)end),
+  io:format("here2~n"),
+  put(pid_data_getter,PidAcc),
+  Tid = ets:new(neurons_data,[set,public]),%% todo:change to ets_statem!!!!!!!!
+  NeuronName2Pid_map=  start_resonator_4stage(nonode, nonode, Tid),
+  neuron_statem:sendMessage(maps:get(afi1,NeuronName2Pid_map),maps:get(afi23,NeuronName2Pid_map),<<1>>,x),
   PidSender ! maps:get(afi1,NeuronName2Pid_map).
   %python_comm:plot_graph(plot_acc_vs_freq,["output_wave.pcm",Start_freq]).
 
