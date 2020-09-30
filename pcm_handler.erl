@@ -313,7 +313,7 @@ acc_process(FileName, Pid_timing,PidSender) ->
 
   Acc = acc_loop(FileName, Pid_timing,0,PidSender,[]),
   io:format("start saving~n"),
-  python_comm:plot_graph(plot_acc_vs_freq,["output_wave.pcm",100,Acc]),
+  python_comm:plot_graph(plot_acc_vs_freq_fromlist,["output_wave.pcm",100,Acc]),
   io:format("end saving~n"),
 
   %lists:foreach(fun({X,N})->write_to_file_3bytes(round(X), FileName),io:format("~p~n",[N]) end,lists:zip(Acc,lists:seq(1,lists:flatlength(Acc)))),
