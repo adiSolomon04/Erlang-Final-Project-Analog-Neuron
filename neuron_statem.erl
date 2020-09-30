@@ -213,9 +213,9 @@ gotBitString(Pid, SynBitString, State= #neuron_statem_state{etsTid = EtsMap, act
            [EnableMsg|EnableList]=maps:get(EnablePid,MsgMap),NewMsgMapEnable=maps:update(EnablePid,EnableList,NewMsgMap),NewMapUpdated=maps:update(msgMap,NewMsgMapEnable,NewNeuronMap),
             ets:insert(EtsMap,{self(),NewMapUpdated}),
            if
-              EnableMsg==<<1>>->io:format("NewMsgMapEnable:  ~p \n", [NewMsgMapEnable]),NewState=State#neuron_statem_state{etsTid = EtsMap,pidIn =PidIn--[EnablePid]},gotBitStringEnabled(SynBitString,
+              EnableMsg==<<1>>->NewState=State#neuron_statem_state{etsTid = EtsMap,pidIn =PidIn--[EnablePid]},gotBitStringEnabled(SynBitString,
                NewState,EnablePid);
-              true -> NewState=State#neuron_statem_state{etsTid = EtsMap},gotBitStringNotEnable(NewState)
+              true -> NewState=State#neuron_statem_state{etsTid = EtsMap,pidIn =PidIn--[EnablePid]},gotBitStringNotEnabled(NewState)
            end
   end, if
            EnablePid==enable ->[{Self,Map}]=ets:lookup(EtsMap,Self),Msg=maps:get(msgMap,Map),NewMap=maps:update(msgMap,maps:update(enable,[<<1>>],Msg),Map),
@@ -233,7 +233,7 @@ gotBitStringEnabled(SynBitString, State= #neuron_statem_state{etsTid = EtsMap, a
   calculations(State#neuron_statem_state{etsTid = EtsMap,pidOut=PidOut},InputsMap,size(SynBitString),1,[],[]),
   State#neuron_statem_state{etsTid = EtsMap,pidIn = [EnablePid]++PidIn}.
 
-gotBitStringNotEnable(_= #neuron_statem_state{etsTid = EtsId, actTypePar=ActType, weightPar=_,
+gotBitStringNotEnabled(State= #neuron_statem_state{etsTid = EtsId, actTypePar=ActType, weightPar=_,
   biasPar=_, leakageFactorPar=_,
   leakagePeriodPar=_,pidIn =_ ,pidOut=PidOut}) ->Self = self(),
   [{Self,NeuronMap}]=ets:lookup(EtsId,Self),
@@ -247,7 +247,7 @@ gotBitStringNotEnable(_= #neuron_statem_state{etsTid = EtsId, actTypePar=ActType
       {OutputBit,NewPnGenerator,NewRandVar}=handleSigmoid(Acc,0,0,PN_generator),
       UpdatedMap1=maps:update(pn_generator,NewPnGenerator,SelfMapTest),UpdatedMap2=maps:update(rand_gauss_var,NewRandVar,UpdatedMap1),
       ets:insert(EtsId,{self(),UpdatedMap2})
-  end,Bin=my_list_to_binary([OutputBit]),io:format("Bin:  ~p \n", [Bin]), sendToNextLayer(Bin,PidOut,Acc).
+  end,Bin=my_list_to_binary([OutputBit]),io:format("Bin:  ~p \n", [Bin]), sendToNextLayer(Bin,[Acc],PidOut),State#neuron_statem_state{etsTid = EtsId}.
 
 %%% Checks whether the neuron has got synapses from all neurons from previous layer.
 checkReady(MsgMapIter)  -> {_,Value,NewMsgMapIter}=maps:next(MsgMapIter),checkReady(Value,NewMsgMapIter).
@@ -324,10 +324,10 @@ handleIdentity(EtsId,CurAcc) when CurAcc>32767 ->NewRandVar= 32767,Self = self()
   ets:insert(EtsId,{self(),maps:update(rand_gauss_var,NewRandVar,SelfMap)}),1;
 handleIdentity(EtsId,CurAcc) when CurAcc < -32767 ->NewRandVar= -32767,Self = self(), [{Self,SelfMap}]=ets:lookup(EtsId,Self),
   ets:insert(EtsId,{self(),maps:update(rand_gauss_var,NewRandVar,SelfMap)}),0;
-handleIdentity(EtsId,CurAcc) ->{Self,SelfMap}=ets:lookup(EtsId,self()),RandVar=maps:get(rand_gauss_var,SelfMap),
-  NewRandVar= RandVar + CurAcc+32768,Self = self(), [{Self,SelfMap}]=ets:lookup(EtsId,Self),
+handleIdentity(EtsId,CurAcc) ->Self=self(),[{_,SelfMap}]=ets:lookup(EtsId,Self),RandVar=maps:get(rand_gauss_var,SelfMap),
+  NewRandVar= RandVar + CurAcc+32768,Self = self(),io:format("NewRandVar:  ~p \n", [NewRandVar]), [{Self,SelfMap}]=ets:lookup(EtsId,Self),
   if
-    NewRandVar >=65536 ->ets:insert(EtsId,{self(),maps:update(rand_gauss_var,65536,SelfMap)}),1 ;
+    NewRandVar >=65536 ->ets:insert(EtsId,{self(),maps:update(rand_gauss_var,NewRandVar-65536,SelfMap)}),1 ;
     true -> ets:insert(EtsId,{self(),maps:update(rand_gauss_var,NewRandVar,SelfMap)}),0
   end.
 
