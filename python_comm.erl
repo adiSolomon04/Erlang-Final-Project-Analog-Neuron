@@ -8,7 +8,7 @@
 %%%-------------------------------------------------------------------
 -module(python_comm).
 -author("adisolo").
-
+-compile(export_all).
 -export([plot_graph/2]).
 
 %%%===================================================================
@@ -51,10 +51,12 @@ run_python(Function, Args)->
 %% transfer string to 'binary'
 %% in order to transfer to 'str' in python
 string_to_binary(List) ->
-  lists:map(
-    fun(X) -> case is_list(X) of
-                true -> list_to_binary(X);
-                _ -> X
-              end
-    end
-  , List).
+  [Head|Tail] = List,
+  NewList = [list_to_binary(Head)|Tail].
+  %lists:map(
+  %  fun(X) -> case is_list(X) of
+  %              true -> list_to_binary(X);
+  %              _ -> X
+  %            end
+  %  end
+  %, List).

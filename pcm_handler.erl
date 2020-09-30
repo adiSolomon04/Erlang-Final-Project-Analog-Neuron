@@ -17,23 +17,35 @@
 %%      Creating PDM input from PCM file
 %%---------------------------------------------------------
 %% FileName - the full file name
+pdm_process(Terms, SendingRate) when is_list(Terms)->
+  receive
+    NeuronPid -> foreachMessageSendToFirstNeuron(Terms,0,0,SendingRate, NeuronPid)
+  end;
 pdm_process(FileName, SendingRate)->
   Terms = read_file_consult(FileName),
   receive
-    NeuronPid -> foreachMessageSendToFirstNeuron(Terms,0,SendingRate, NeuronPid)
+    NeuronPid -> foreachMessageSendToFirstNeuron(Terms,0,0,SendingRate, NeuronPid)
   end.
 
 
-foreachMessageSendToFirstNeuron([],_,_, _)->
+foreachMessageSendToFirstNeuron([],_,_,_, NeuronPid)->
+  neuron_statem:stop(NeuronPid,[]),
   io:format("sent all messages\n"),
   os:cmd("notify-send Task complete_succesfully"),
   sccefully_send_all_message;
-foreachMessageSendToFirstNeuron([Head|Tail],Rand_gauss_var,SendingRate, NeuronPid)->
-  {NewNeuronPid,NewRand_gauss_var} = sendToFirstNeuron(Head,Rand_gauss_var,SendingRate, NeuronPid),
-  foreachMessageSendToFirstNeuron(Tail,NewRand_gauss_var,SendingRate, NewNeuronPid).
+foreachMessageSendToFirstNeuron([Head|Tail],Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid)->
+  if SendingRateCounter rem 100 == 0, SendingRateCounter =/= 0->
+    io:format("wat to send ~p~n",[SendingRateCounter]),
+    receive
+      X when X == SendingRateCounter-50 ->io:format("SendingRateCounter~p~n",[SendingRateCounter])
+    end;
+    true -> ok
+  end,
+  {NewNeuronPid,NewRand_gauss_var} = sendToFirstNeuron(Head,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid),
+  foreachMessageSendToFirstNeuron(Tail,NewRand_gauss_var,(SendingRateCounter+1) ,SendingRate, NewNeuronPid).
 
 
-sendToFirstNeuron(Acc,Rand_gauss_var,SendingRate, NeuronPid) ->
+sendToFirstNeuron(Acc,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid) ->
   %% translate Number to Bitstring
   if Acc > 524288 ->
     NewAcc=524288;
@@ -60,7 +72,12 @@ sendToFirstNeuron(Acc,Rand_gauss_var,SendingRate, NeuronPid) ->
       S=self(),
       neuron_statem:sendMessage(NewNeuronPid,S,Bit, x),
       {NeuronPid,NewRand_gauss_var}
-    after SendingRate -> NewNeuronPid= NeuronPid,
+    after 0 ->
+    if
+      SendingRateCounter rem SendingRate == 0 -> timer:sleep(1);
+    true -> ok
+    end,
+    NewNeuronPid= NeuronPid,
       S=self(),
       neuron_statem:sendMessage(NeuronPid,S,Bit, x),
     {NewNeuronPid,NewRand_gauss_var}
@@ -74,6 +91,90 @@ function_wait(NeuronPid)->
 
   end.
 
+%%---------------------------------------------------------
+%%      Creating Our Own PCM sin List
+%%---------------------------------------------------------
+
+%%%%% OPTIONAL Distribute Sine creations
+%% Can get a list of output files and write to multiple files.
+%% Use a gather function at the end.
+%% Number of writes total: (End-Start)*200,000 /Samp Rate.
+
+create_wave_list(Start_freq, End_freq, Samp_rate)->
+  %% Parameters
+  Clk_freq = 1536000,		% Input PDM Clock frequency [Hz]
+  Samp_freq = 8000,		% Output PCM Sample frequency [Hz]
+  Amplitude = 1000,
+  PI2=6.283185307179586476925286766559, %%2*math:pi(),
+  Step = 200000,
+  Samp_rate_ratio = round(Clk_freq/Samp_freq + 0.5),
+  %% Calc first Loop
+  Sine_freq =Start_freq+ 1/Step,	% Waveform frequency [Hz]
+  Phase = PI2*Sine_freq /(1.0*Clk_freq),
+
+  %% File Opening for writing
+  % [write, raw] - deletes the prev content & enables write, writes fast.
+  case (End_freq-Start_freq)*Step of
+    Loops when Loops>0 ->
+      io:format("~p~n", [Loops]),
+      SinSample = write_list_loop_avg(0, Sine_freq, Phase, 1, Loops, Step, PI2, Clk_freq, Amplitude, case Samp_rate of
+                                                                                           0 -> Samp_rate_ratio;
+                                                                                           _ -> Samp_rate
+                                                                                         end,[]);
+    0 -> io:format("Running 1,000,000 Loops wuth Samp_rate as 1~n"),
+      SinSample= write_list_loop_avg(0, Sine_freq,  Phase, 1, 10000000, Step, PI2, Clk_freq, Amplitude, 1,[]);
+    _ -> io:format("err in Loops number~n"),
+      SinSample = write_list_loop_avg(0, Sine_freq,  Phase, 1, 10000000, Step, PI2, Clk_freq, Amplitude, Samp_rate_ratio,[])
+  end.
+
+
+%% writes sin wave to the pcm file
+%% sin wave with a changing freq
+%% (starts in Sine_freq, ends in Sin_freq+Step*Loops
+
+write_list_loop_avg(Samp_sum, _, Phase, Samp_rate_ratio, 0, _, _, _, Amplitude, Samp_rate_ratio,SinSample)->
+  Sine_wave = Amplitude * math:sin(Phase),
+  Samp_in = Sine_wave,
+  Samp_write = round((Samp_in+Samp_sum)/Samp_rate_ratio),
+  SinSampleNew = [Samp_write|SinSample],
+  lists:reverse(SinSampleNew);
+
+write_list_loop_avg(_, _, _, _, 0, _, _, _, _, _, SinSample)->
+  lists:reverse(SinSample);
+
+write_list_loop_avg(Samp_sum, Sine_freq, Phase, Samp_rate_count, Loops, Step, PI2, Clk_freq, Amplitude, Samp_rate_ratio, SinSample)->
+  Sine_wave = Amplitude * math:sin(Phase),
+  Samp_in = Sine_wave,
+  case Samp_rate_count of
+    Samp_rate_ratio ->
+
+      if (Loops rem 10000) == 0 -> io:format("print ~p~n", [Loops]);
+        true -> ok
+      end,
+
+
+      Samp_write = round((Samp_in+Samp_sum)/(1.0*Samp_rate_ratio)),
+      SinSampleNew = [Samp_write|SinSample],
+      Samp = 0,
+      Count = 1;
+    _ ->
+      Samp = Samp_in+Samp_sum,
+      Count = Samp_rate_count+1,
+      SinSampleNew = SinSample
+  end,
+
+  write_list_loop_avg(
+    Samp,
+    Sine_freq+ 1/Step,	% Waveform frequency [Hz]
+    Phase + PI2*(Sine_freq+ 1/Step) /Clk_freq,
+    Count,
+    Loops-1,
+    Step,
+    PI2,
+    Clk_freq,
+    Amplitude,
+    Samp_rate_ratio,
+    SinSampleNew).
 
 %%---------------------------------------------------------
 %%      Creating Our Own PCM sin File
@@ -143,7 +244,12 @@ create_wave(Start_freq, End_freq, Samp_rate)->
     %io:format("~p~n",[Samp_rate_ratio]),
     case Samp_rate_count of
       Samp_rate_ratio ->
-        io:format("print ~p~n", [Loops]),
+
+        if (Loops rem 10000) == 0 -> io:format("print ~p~n", [Loops]);
+          true -> ok
+        end,
+
+
         Samp_write = round((Samp_in+Samp_sum)/(1.0*Samp_rate_ratio)),
         write_to_file(Samp_write, FileName),
         Samp = 0,
@@ -201,22 +307,32 @@ acc_loop(FileName)->
   end.
 
 %% Same, But sends bit to timing process.
-acc_process(FileName, Pid_timing) ->
+acc_process(FileName, Pid_timing,PidSender) ->
   %%% add open for writing and closing.
   {ok, PcmFile}= file:open(FileName++".pcm", [write, raw]),
 
-  acc_loop(FileName, Pid_timing),
+  Acc = acc_loop(FileName, Pid_timing,0,PidSender,[]),
+  io:format("start saving~n"),
+  python_comm:plot_graph(plot_acc_vs_freq,["output_wave.pcm",100,Acc]),
+  io:format("end saving~n"),
+
+  %lists:foreach(fun({X,N})->write_to_file_3bytes(round(X), FileName),io:format("~p~n",[N]) end,lists:zip(Acc,lists:seq(1,lists:flatlength(Acc)))),
   file:close(PcmFile).
 
-acc_loop(FileName, Pid_timing)->
+acc_loop(FileName, Pid_timing,GotMessageCounter,PidSender,TODELETE)->
+  if GotMessageCounter rem 100 == 50 -> PidSender!GotMessageCounter,io:format("gotMessageCounter~p\n",[GotMessageCounter]);
+    true -> ok
+  end,
 
   receive
     {_, [Num]} when is_number(Num)->
-      write_to_file_3bytes(round(Num), FileName),
-      Pid_timing!<<1>>,
+      TIME1 = erlang:timestamp(),
+      TODELETE2 = [round(Num)|TODELETE],
+      %write_to_file_3bytes(round(Num), FileName),
+      Pid_timing!{timer:now_diff(erlang:timestamp(), TIME1),<<1>>},
       %io:format("acc ~p~n", [round(Num)]),
-      acc_loop(FileName, Pid_timing);
-    done -> killed
+      acc_loop(FileName, Pid_timing,GotMessageCounter+1,PidSender,TODELETE2);
+    done -> io:format("got done"), killed , TODELETE
   end.
 
 
@@ -232,8 +348,8 @@ timing_process(Pid_wx)->
 
 timing_loop(Pid, Time)->
   receive
-    _ -> case timer:now_diff(erlang:timestamp(), Time) of
-              Diff when Diff >1000000 -> io:format("1 second passed~p~n",[Diff]), timing_loop(Pid, erlang:timestamp());
+    {X,_} -> case timer:now_diff(erlang:timestamp(), Time) of
+              Diff when Diff >1000000 -> io:format("~p 1 second passed~p~n",[X,Diff]), timing_loop(Pid, erlang:timestamp());
              _ -> timing_loop(Pid, Time)
          end
   end.
