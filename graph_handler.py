@@ -73,7 +73,7 @@ def plot_waves():
 
 # Print acc vs. freq function.
 def plot_acc_vs_freq(file_name, start_freq):
-    samp_rate = 193
+    samp_rate = 1
     with open(file_name, 'rb') as f:
         buf = f.read()
         data_read = np.frombuffer(buf, dtype='int8')
