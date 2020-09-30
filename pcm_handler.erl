@@ -35,9 +35,15 @@ foreachMessageSendToFirstNeuron([],_,_,_, NeuronPid)->
   sccefully_send_all_message;
 foreachMessageSendToFirstNeuron([Head|Tail],Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid)->
   if SendingRateCounter rem 100 == 0, SendingRateCounter =/= 0->
-    io:format("wat to send ~p~n",[SendingRateCounter]),
+    if SendingRateCounter rem 10000 == 0-> io:format("wat to send ~p~n",[SendingRateCounter]);
+      true -> ok
+    end,
+
     receive
-      X when X == SendingRateCounter-50 ->io:format("SendingRateCounter~p~n",[SendingRateCounter])
+      X when X == SendingRateCounter-50 ->
+        if SendingRateCounter rem 10000 == 10000-50-> io:format("SendingRateCounter~p~n",[SendingRateCounter]);
+          true -> ok
+        end
     end;
     true -> ok
   end,
@@ -335,6 +341,39 @@ acc_loop(FileName, Pid_timing,GotMessageCounter,PidSender,TODELETE)->
     done -> io:format("got done"), killed , TODELETE
   end.
 
+
+
+
+acc_process_appendData(Pid_timing,PidSender,PidPlotGraph) ->
+  %%% add open for writing and closing.
+
+  Acc = acc_appendData_loop( Pid_timing,0,PidSender,PidPlotGraph,[]),
+  PidPlotGraph!plot,
+  io:format("exit acc~n").
+
+  %lists:foreach(fun({X,N})->write_to_file_3bytes(round(X), FileName),io:format("~p~n",[N]) end,lists:zip(Acc,lists:seq(1,lists:flatlength(Acc)))),
+
+acc_appendData_loop(Pid_timing,GotMessageCounter,PidSender,PidPlotGraph,ListAcc)->
+  if GotMessageCounter rem 100 == 50 -> PidSender!GotMessageCounter,
+        if GotMessageCounter rem 10000 == (10000-50)-> io:format("gotMessageCounter~p\n",[GotMessageCounter]);
+        true -> ok
+      end;
+    true -> ok
+  end,
+
+  receive
+    {_, [Num]} when is_number(Num)->
+      TIME1 = erlang:timestamp(),
+      ListAccNew = [round(Num)|ListAcc],
+      %write_to_file_3bytes(round(Num), FileName),
+      Pid_timing!{timer:now_diff(erlang:timestamp(), TIME1),<<1>>},
+      %io:format("acc ~p~n", [round(Num)]),
+      if GotMessageCounter rem 50000 == 0 -> PidPlotGraph!ListAcc, ListAccFinal =[];
+        true -> ListAccFinal = ListAccNew
+      end,
+      acc_appendData_loop(Pid_timing,GotMessageCounter+1,PidSender,PidPlotGraph,ListAccFinal);
+    done -> io:format("got done") , PidPlotGraph!ListAcc
+  end.
 
 %%---------------------------------------------------------
 %%      Timing process
