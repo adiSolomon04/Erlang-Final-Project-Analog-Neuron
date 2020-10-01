@@ -142,3 +142,65 @@ def plot_val_vs_time_fromlist(file_name, List):
      plt.title('Input Value vs. Time', fontsize=20)
      #plt.show()
 
+
+
+XXX = np.array([])
+
+def addXXX(file_name,List):
+    global XXX
+    XXX = np.append(XXX,List)
+
+
+def printXXX(file_name,List):
+    global XXX
+    print(XXX)
+
+
+
+###### final opinion!
+
+acc_vs_freq = np.array([])
+
+
+def append_acc_vs_freq(List):
+    global acc_vs_freq
+    acc_vs_freq = np.append(acc_vs_freq, np.flip(np.array(List)))
+
+
+# Print acc vs. freq function.
+def plot_acc_vs_freq_global(start_freq):
+    global acc_vs_freq
+    samp_rate = 1
+    data = acc_vs_freq
+    x = np.arange(start_freq, start_freq + 1.0 * samp_rate / 200000 * (len(data)), 1.0 / 200000 * samp_rate)
+
+    plt.figure('Figure')
+    plt.plot(x[0:len(data)], data)
+    plt.xlabel('Frequency[Hz]', fontsize=14)
+    plt.ylabel('Acc', fontsize=14)
+    plt.title('Acc vs. Frequency', fontsize=20)
+    plt.show()
+    acc_vs_freq = np.array([])
+
+
+acc_vs_freq = np.array([])
+
+
+def append_val_vs_time(List):
+    global acc_vs_freq
+    acc_vs_freq = np.append(List,acc_vs_freq)
+
+
+# Print acc vs. time domain.
+def plot_val_vs_time_global():
+    global acc_vs_freq
+    samp_rate = 1
+    data = np.array(acc_vs_freq)
+    x = np.arange(0, 1.0 * samp_rate / clk * (len(data)), 1.0 / clk * samp_rate)
+    plt.figure('Figure')
+    plt.plot(x[0:len(data)], data)
+    plt.xlabel('Time[sec]', fontsize=14)
+    plt.ylabel('Value', fontsize=14)
+    plt.title('Input Value vs. Time', fontsize=20)
+    plt.show()
+    acc_vs_freq = np.array([])

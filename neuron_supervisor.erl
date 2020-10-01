@@ -9,7 +9,7 @@
 -module(neuron_supervisor).
 -author("adisolo").
 
--export([start/3, fix_mode_node/1, start4neurons/0, start4neurons/1]).
+-export([start/3, fix_mode_node/1, start4neurons/0, start4neurons/2]).
 
   %% record for neuron init.
 -record(neuron_statem_state, {etsTid, actTypePar=identity,weightPar,biasPar=0,leakageFactorPar=5,leakagePeriodPar=73,pidIn=[],pidOut=[]}).
@@ -18,6 +18,8 @@
 %%% API
 %%%===================================================================
 
+
+%% not use very old
 start(ListLayerSize, NumEts, InputFile)->
   % Set as a system process
   process_flag(trap_exit, true),
@@ -47,14 +49,17 @@ start(ListLayerSize, NumEts, InputFile)->
   put(nodes, NodeNames),
   supervisor().
 
-start4neurons(Semp) ->
 
+%% Semp = pcm_handler:create_wave_list(100,115,1).
+%% neuron_supervisor:start4neurons(Semp,100).
+start4neurons(Semp,Start_freq) ->
   %pcm_handler:create_wave(Start_freq, End_freq, 1),
   io:format("here1~n"),
   PidTiming = spawn(fun()->pcm_handler:timing_process(self())end),
   PidSender = spawn_link(pcm_handler,pdm_process,[Semp, 40]),
   put(pid_data_sender,PidSender),
-  PidAcc = spawn(fun()->pcm_handler:acc_process("output_wave", PidTiming,PidSender)end),
+  PidPlotGraph = spawn_link(python_comm,plot_graph_process,[append_acc_vs_freq,plot_acc_vs_freq_global,[Start_freq]]),
+  PidAcc = spawn(fun()->pcm_handler:acc_process_appendData(PidTiming,PidSender,PidPlotGraph)end),
   io:format("here2~n"),
   put(pid_data_getter,PidAcc),
   Tid = ets:new(neurons_data,[set,public]),%% todo:change to ets_statem!!!!!!!!

@@ -27,6 +27,25 @@
 plot_graph(Function, Args)->
   spawn(fun() -> run_python(Function, Args) end).
 
+
+%% spawn a process which
+plot_graph_process(Function_Append,Function_Plot,Args_Plot)->
+  io:format("gotr hereeeeeeeeeeeeeee"),
+  {ok, CurrentDirectory} = file:get_cwd(),
+  {ok, P}= python:start([
+    {python_path, CurrentDirectory},
+    {python, "python3"}]),
+  plot_graph_process_loop(Function_Append,Function_Plot,Args_Plot,P).
+
+
+plot_graph_process_loop(Function_Append,Function_Plot,Args_Plot,P)->
+  receive
+    plot -> io:format("plot~n"),python:call(P, graph_handler, Function_Plot,Args_Plot);
+    List ->io:format("append~n"),python:call(P, graph_handler, Function_Append, [List]),
+      plot_graph_process_loop(Function_Append,Function_Plot,Args_Plot,P)
+  end.
+
+
 %%%===================================================================
 %%%      opening a Python instance erl-port
 %%%===================================================================
