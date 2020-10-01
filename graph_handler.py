@@ -94,7 +94,7 @@ def plot_acc_vs_freq(file_name, start_freq):
 
 
 # Print acc vs. freq function.
-def plot_acc_vs_freq_fromlist(file_name, start_freq,list):
+def plot_acc_vs_freq_fromlist(file_name, start_freq, list):
     samp_rate = 1
     data = np.flip(np.array(list))
     x = np.arange(start_freq, start_freq + 1.0 * samp_rate / 200000 * (len(data)), 1.0 / 200000 * samp_rate)
@@ -125,12 +125,12 @@ def plot_val_vs_time(file_name):
         plt.xlabel('Time[sec]', fontsize=14)
         plt.ylabel('Value', fontsize=14)
         plt.title('Input Value vs. Time', fontsize=20)
-        plt.show()
+        #plt.show()
 
 
 
 # Print acc vs. time domain.
-def plot_val_vs_time_fromlist(file_name,List):
+def plot_val_vs_time_fromlist(file_name, List):
      samp_rate = 1
      data = np.array(List)
      x = np.arange(0, 1.0 * samp_rate / clk * (len(data)), 1.0 / clk * samp_rate)
@@ -140,5 +140,5 @@ def plot_val_vs_time_fromlist(file_name,List):
      plt.xlabel('Time[sec]', fontsize=14)
      plt.ylabel('Value', fontsize=14)
      plt.title('Input Value vs. Time', fontsize=20)
-     plt.show()
+     #plt.show()
 

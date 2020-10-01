@@ -17,6 +17,10 @@
 
 %% Spawn a python instance for graph plotting.
 %% Function is:
+%% plot_acc_vs_freq_fromlist   Args=[file_data_name, start_freq, list]
+%% plot_val_vs_time_fromlist   Args=[file_data_name, list]
+
+%% NOT USED
 %% plot_acc_vs_freq   Args=[file_data_name, start_freq]
 %% plot_val_vs_time  Args=[file_data_name]
 
