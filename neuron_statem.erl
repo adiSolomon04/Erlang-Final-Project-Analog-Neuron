@@ -120,7 +120,7 @@ network_config(cast, {PidGetMsg,PidSendMsg}, State = #neuron_statem_state{etsTid
    weightPar=Weight,
   biasPar=Bias, leakageFactorPar=LF,
   leakagePeriodPar=LP,pidIn=_,pidOut=_}) ->
-  erlang:display("config!!!/n"),
+  erlang:display("config!!!"),
   ListMsgMap = [{X,[]}||X <- PidGetMsg],
   MsgMap = maps:from_list(ListMsgMap),
   [PidEnabel|EnterPidGetMsg] =PidGetMsg,
