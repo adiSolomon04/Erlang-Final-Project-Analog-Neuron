@@ -8,7 +8,7 @@
 %%%-------------------------------------------------------------------
 -module(neuron_supervisor).
 -author("adisolo").
-
+-compile(export_all).
 -export([start/3, fix_mode_node/1, start4neurons/0, start4neurons/2]).
 
   %% record for neuron init.
@@ -142,7 +142,45 @@ start_resonator_4stage(onenode, Node, Tid) ->
 start_resonator_4stage(fournodes, Nodes, Tid) ->
   do.
 
+%%==================================================
+%% 4 neurons on 4 Nodes
+%%==================================================
+start4neurons_global(Samp, Start_freq)->
+  Nodes = ['adi@adisolo','eran@adisolo','emm@adisolo','yuda@adisolo'],
+  Node1 = 'adi@adisolo',
+  Node2 = 'eran@adisolo',
+  Node3 = 'emm@adisolo',
+  Node4 = 'yuda@adisolo',
 
+  lists:foreach(fun(Node)->rpc:call(Node, neuron_supervisor, spawn_ets, [self()])end, Nodes),
+  [Tid1, Tid2, Tid3, Tid4] = gatherTid_4nodes(Nodes, []),
+
+  {ok,Pid1}=neuron_statem:start_link_global(get_new_atom(Node1, 1), Tid1, Record),
+  {ok,Pid1} = rpc:call(Node2, neuron_statem, start_link_global, [get_new_atom(Node2, 2), Tid, Record]),
+  neuron_statem:pidConfig(Pid1, [enable,self()],
+    [self()]),
+  neuron_statem:sendMessage(Pid1, self(), <<1>>, "nothing").
+
+gatherTid_4nodes([Node|Nodes], List)->
+  receive
+    {Node, Tid} -> gatherTid(Nodes, List++[Tid])
+  end;
+gatherTid_4nodes([], List) -> List.
+
+spawn_ets(Pid)->
+  spawn(fun()-> ets(Pid) end).
+
+
+ets(Pid)->
+  Tid = ets:new(neurons_data,[set,public]),
+  Pid!{Tid,node()},
+  receive
+    die -> nothing
+  end.
+
+
+
+get_new_atom(Node, Num) -> list_to_atom(lists:flatten(io_lib:format("~p~p", [Node, Num]))).
 
 
 

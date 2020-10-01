@@ -12,7 +12,7 @@
 -behaviour(gen_statem).
 
 %% API
--export([start_link/3, pidConfig/3, sendMessage/4, stop/2]).
+-export([start_link/3, pidConfig/3, sendMessage/4, stop/2, start_link_global/3]).
 
 %% gen_statem callbacks
 -export([init/1, format_status/2, state_name/3, handle_event/4, terminate/3,
@@ -31,6 +31,9 @@
 %% function does not return until Module:init/1 has returned.
 start_link(Name_neuron_statem,EtsTid, NeuronParameters) ->
   gen_statem:start_link({local, Name_neuron_statem}, ?MODULE, [EtsTid, NeuronParameters], []).
+
+start_link_global(Name_neuron_statem,EtsTid, NeuronParameters) ->
+  gen_statem:start_link({global, Name_neuron_statem}, ?MODULE, [EtsTid, NeuronParameters], []).
 
 pidConfig(Name_neuron_statem,PrevPid,NextPid) ->
   gen_statem:cast(Name_neuron_statem,{PrevPid,NextPid}).
@@ -85,7 +88,7 @@ init([EtsTid,restore]) ->
 
 init([EtsTid, NeuronParametersMap]) ->
   S=self(),
-  io:format("~p init!!!",[S]),
+  erlang:display("init!!!"),
   % enter the parameters to the ets and record/Parameters
   {ok, network_config, NeuronParametersMap}.
 
@@ -117,7 +120,7 @@ network_config(cast, {PidGetMsg,PidSendMsg}, State = #neuron_statem_state{etsTid
    weightPar=Weight,
   biasPar=Bias, leakageFactorPar=LF,
   leakagePeriodPar=LP,pidIn=_,pidOut=_}) ->
-  io:format("~p config!!!",[self()]),
+  erlang:display("config!!!/n"),
   ListMsgMap = [{X,[]}||X <- PidGetMsg],
   MsgMap = maps:from_list(ListMsgMap),
   [PidEnabel|EnterPidGetMsg] =PidGetMsg,
