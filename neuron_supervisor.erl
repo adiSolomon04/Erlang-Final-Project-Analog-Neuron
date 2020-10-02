@@ -9,7 +9,7 @@
 -module(neuron_supervisor).
 -author("adisolo").
 -compile(export_all).
--export([ start4neurons/0, start4neurons/3]).
+-export([]).
 
   %% record for neuron init.
 -record(neuron_statem_state, {etsTid, actTypePar=identity,weightPar,biasPar=0,leakageFactorPar=5,leakagePeriodPar=73,pidIn=[],pidOut=[]}).
@@ -18,17 +18,17 @@
 %%%  4 Neurons Launcher
 %%%===================================================================
 
-%% Semp = pcm_handler:create_wave_list(100,115,1).
-%% neuron_supervisor:start4neurons(Semp,100, nonode).
-%% neuron_supervisor:start4neurons(Samp, 0, fournodes)
+%% Samp = pcm_handler:create_wave_list(100,115,1).
+%% neuron_supervisor:start4neurons(Samp,100, nonode).
+%% neuron_supervisor:start4neurons(Samp, 0, fournodes).
 
 %% List=pcm_handler:create_wave_list(0, 2, 1).
 %% neuron_supervisor:start4neurons(List, 0, fournodes).
-start4neurons(Semp,Start_freq, Resonator_options) ->
+start4neurons(Samp,Start_freq, Resonator_options) ->
   %pcm_handler:create_wave(Start_freq, End_freq, 1),
   io:format("here1~n"),
   PidTiming = spawn(fun()->pcm_handler:timing_process(self())end),
-  PidSender = spawn_link(pcm_handler,pdm_process,[Semp, 40]),
+  PidSender = spawn_link(pcm_handler,pdm_process,[Samp, 40]),
   put(pid_data_sender,PidSender),
   PidPlotGraph = spawn_link(python_comm,plot_graph_process,[append_acc_vs_freq,plot_acc_vs_freq_global,[Start_freq]]),
   PidAcc = spawn(fun()->pcm_handler:acc_process_appendData(PidTiming,PidSender,PidPlotGraph)end),
@@ -48,8 +48,7 @@ start4neurons() ->
   PidAcc = spawn(fun()->pcm_handler:acc_process("output_wave", PidTiming,PidSender)end),
   io:format("here2~n"),
   put(pid_acc_getter,PidAcc),
-  Tid = ets:new(neurons_data,[set,public]),%% todo:change to ets_statem!!!!!!!!
-  NeuronName2Pid_map=  start_resonator_4stage(nonode, nonode, Tid),
+  NeuronName2Pid_map=  start_resonator_4stage(nonode, nonode),
   neuron_statem:sendMessage(maps:get(afi1,NeuronName2Pid_map),maps:get(afi23,NeuronName2Pid_map),<<1>>,x),
   PidSender ! maps:get(afi1,NeuronName2Pid_map).
   %python_comm:plot_graph(plot_acc_vs_freq,["output_wave.pcm",Start_freq]).
@@ -64,7 +63,7 @@ start_resonator_4stage(nonode, _) ->
   % afb1, afb2, afb3, afb4,
   % afi31, afi32, afi33, afi34],
 
-  NeuronName2Pid=lists:map(fun({Name, Record}) -> {ok,Pid}=neuron_statem:start_link(Name, Tid, Record), {Name, Pid} end, Neurons),
+  NeuronName2Pid=lists:map(fun({Name, Record}) -> {ok,Pid}=neuron_statem:start_link(Name, Record), {Name, Pid} end, Neurons),
   %list neuron name -> pid
   NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
   neuron_statem:pidConfig(maps:get(afi1,NeuronName2Pid_map), [enable,get(pid_data_sender),maps:get(afi23,NeuronName2Pid_map)],
@@ -76,7 +75,7 @@ start_resonator_4stage(nonode, _) ->
   neuron_statem:pidConfig(maps:get(afi23,NeuronName2Pid_map), [enable,maps:get(afi22,NeuronName2Pid_map)],
     [maps:get(afi1, NeuronName2Pid_map)]),
   NeuronName2Pid_map;
-start_resonator_4stage(onenode, Node) ->
+start_resonator_4stage(onenode, _) ->
   do;
 
 %% neuron_supervisor:start_resonator_4stage(fournodes, hi, bye).
@@ -91,22 +90,32 @@ start_resonator_4stage(fournodes, _) ->
   %%% Open 4 ets
   %%% tables on each node.
   lists:foreach(fun(Node)->rpc:call(Node, neuron_supervisor, spawn_ets, [node()])end, Nodes),
-  erlang:display("gather"),
   [Tid1, Tid2, Tid3, Tid4] = gatherTid_4nodes(Nodes, []),
-  erlang:display("ended gather"),
 
   %%% Start 4
   %%% statem neurons
-  Neurons = [{afi1, #neuron_statem_state{etsTid=Tid1,weightPar=[11,-9], biasPar=-1}, Node1, Tid1},
-    {afi21, #neuron_statem_state{etsTid=Tid2,weightPar=[10], biasPar=-5}, Node2, Tid2},
-    {afi22, #neuron_statem_state{etsTid=Tid3,weightPar=[10], biasPar=-5}, Node3, Tid3},
-    {afi23, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5}, Node4, Tid4}],
+  Neurons = [{afi1, #neuron_statem_state{etsTid=Tid1,weightPar=[11,-9], biasPar=-1}, Node1},
+    {afi21, #neuron_statem_state{etsTid=Tid2,weightPar=[10], biasPar=-5}, Node2},
+    {afi22, #neuron_statem_state{etsTid=Tid3,weightPar=[10], biasPar=-5}, Node3},
+    {afi23, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5}, Node4}],
 
-  NeuronName2Pid=lists:map(fun({Name, Record, Node, Tid}) ->
-    {ok,Pid}=rpc:call(Node, neuron_statem, start_link_global, [Name,Tid, Record]), {Name, Pid} end, Neurons),
+  NeuronName2Pid=lists:map(fun({Name, Record, Node}) ->
+    {ok,Pid}=rpc:call(Node, neuron_statem, start_link_global, [Name,Record]), {Name, Pid} end, Neurons),
   NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
 
-  NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
+  %%%% using global name {global, 'afi1'}.
+  %%%% rpc:call - start_link_global
+  %neuron_statem:pidConfig({global,'afi1'}, [enable,get(pid_data_sender),maps:get(afi23,NeuronName2Pid_map)],
+  %  [maps:get(afi21, NeuronName2Pid_map),{finalAcc,get(pid_acc_getter)}]),
+  %neuron_statem:pidConfig({global, 'afi21'}, [enable,maps:get(afi1,NeuronName2Pid_map)],
+  %  [maps:get(afi22, NeuronName2Pid_map)]),
+  %neuron_statem:pidConfig({global, 'afi22'}, [enable,maps:get(afi21,NeuronName2Pid_map)],
+  %  [maps:get(afi23, NeuronName2Pid_map)]),
+  %neuron_statem:pidConfig({global, 'afi23'}, [enable,maps:get(afi22,NeuronName2Pid_map)],
+  %  [maps:get(afi1, NeuronName2Pid_map)]),
+
+  %%%% using pid only.
+  %%%% rpc:call - start_link_global
   neuron_statem:pidConfig(maps:get(afi1,NeuronName2Pid_map), [enable,get(pid_data_sender),maps:get(afi23,NeuronName2Pid_map)],
     [maps:get(afi21, NeuronName2Pid_map),{finalAcc,get(pid_acc_getter)}]),
   neuron_statem:pidConfig(maps:get(afi21,NeuronName2Pid_map), [enable,maps:get(afi1,NeuronName2Pid_map)],
@@ -115,10 +124,23 @@ start_resonator_4stage(fournodes, _) ->
     [maps:get(afi23, NeuronName2Pid_map)]),
   neuron_statem:pidConfig(maps:get(afi23,NeuronName2Pid_map), [enable,maps:get(afi22,NeuronName2Pid_map)],
     [maps:get(afi1, NeuronName2Pid_map)]),
+
+  %%%% using local name and node name
+  %%%% HAVE to USE NAME from start_link   ****
+  %%%% rpc:call - start_link
+  %%neuron_statem:pidConfig({afi1, Node1}, [enable,get(pid_data_sender),maps:get(afi23,NeuronName2Pid_map)],
+  %%  [maps:get(afi21, NeuronName2Pid_map),{finalAcc,get(pid_acc_getter)}]),
+  %%neuron_statem:pidConfig({maps:get(afi21,NeuronName2Pid_map), Node2}, [enable,maps:get(afi1,NeuronName2Pid_map)],
+  %%  [maps:get(afi22, NeuronName2Pid_map)]),
+  %%neuron_statem:pidConfig({maps:get(afi22,NeuronName2Pid_map), Node3}, [enable,maps:get(afi21,NeuronName2Pid_map)],
+  %%  [maps:get(afi23, NeuronName2Pid_map)]),
+  %%neuron_statem:pidConfig({maps:get(afi23,NeuronName2Pid_map), Node4}, [enable,maps:get(afi22,NeuronName2Pid_map)],
+  %%  [maps:get(afi1, NeuronName2Pid_map)]),
+
   NeuronName2Pid_map.
 
 
-gatherTid_4nodes(All=[Node|Nodes], List)->
+gatherTid_4nodes([Node|Nodes], List)->
   receive
     {Tid, Node} -> gatherTid_4nodes(Nodes, List++[Tid])
   end;
@@ -148,7 +170,7 @@ get_new_atom(Node, Num) -> list_to_atom(lists:flatten(io_lib:format("~p~p", [Nod
 %%%===================================================================
 
 
-start(Nodes)->nothing.
+%  start(Nodes)->nothing.
 %  % Set as a system process
 %  process_flag(trap_exit, true),
 %
@@ -214,7 +236,7 @@ createLayerNeurons({Node, LayerSize, Tid})->
   NeuronParameters = lists:seq(1, LayerSize),
   % Todo: get the neuron parameters in a map/record and put in the list.
   % Todo: -record(neuron_statem_state, {etsTid,actTypePar,weightPar,biasPar,leakageFactorPar,leakagePeriodPar,pidIn,pidOut}).
-  {Node, lists:map(fun(X)-> {spawn_link(Node, neuron_statem, start_link/3, [Tid, #{}]), {Node, Tid}}  end, NeuronParameters)}.
+  {Node, lists:map(fun(X)-> {spawn_link(Node, neuron_statem, start_link/2, [Tid, #{}]), {Node, Tid}}  end, NeuronParameters)}.
 
 %% spawns and monitors a process at node NODE.
 %% returns {Pid, Ref}.
@@ -277,7 +299,7 @@ debugResonator_4stage() ->
   Tid = ets:new(neurons_data,[set,public]),
   Self = self(),
   put(pid_data_sender,Self),
-  NeuronName2Pid_map = start_resonator_4stage(nonode,nonode,Tid),
+  NeuronName2Pid_map = start_resonator_4stage(nonode,nonode),
   receive
   after 10000 -> io:format("\n\nend wait ~p\n\n",[NeuronName2Pid_map])
   end,

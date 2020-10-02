@@ -112,7 +112,7 @@ create_wave_list(Start_freq, End_freq, Samp_rate)->
   Samp_freq = 8000,		% Output PCM Sample frequency [Hz]
   Amplitude = 1000,
   PI2=6.283185307179586476925286766559, %%2*math:pi(),
-  Step = 20000, %% 200000
+  Step = 200000, %% 200000
   Samp_rate_ratio = round(Clk_freq/Samp_freq + 0.5),
   %% Calc first Loop
   Sine_freq =Start_freq+ 1/Step,	% Waveform frequency [Hz]
