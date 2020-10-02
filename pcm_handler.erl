@@ -296,6 +296,7 @@ acc_process(FileName) ->
   acc_loop(FileName),
   file:close(PcmFile).
 
+
 acc_loop(FileName)->
 
   receive
@@ -319,6 +320,27 @@ acc_process(FileName, Pid_timing,PidSender) ->
   %lists:foreach(fun({X,N})->write_to_file_3bytes(round(X), FileName),io:format("~p~n",[N]) end,lists:zip(Acc,lists:seq(1,lists:flatlength(Acc)))),
   file:close(PcmFile).
 
+msg_process(FileName,PidSender) ->
+  %%% add open for writing and closing.
+  {ok, PcmFile}= file:open(FileName++".pcm", [write, raw]),
+
+  Acc = msg_loop(0,PidSender),
+  io:format("start saving~n"),
+  python_comm:plot_graph(plot_acc_vs_freq_fromlist,["output_wave.pcm",100,Acc]),
+  io:format("end saving~n"),
+
+  %lists:foreach(fun({X,N})->write_to_file_3bytes(round(X), FileName),io:format("~p~n",[N]) end,lists:zip(Acc,lists:seq(1,lists:flatlength(Acc)))),
+  file:close(PcmFile).
+
+msgAcc_process(FileName, Pid_timing,PidSender) ->
+  %%% add open for writing and closing.
+  {ok, PcmFile}= file:open(FileName++".pcm", [write, raw]),
+
+  _ = msgAcc_loop(FileName, Pid_timing,0,PidSender,[]),
+
+  %lists:foreach(fun({X,N})->write_to_file_3bytes(round(X), FileName),io:format("~p~n",[N]) end,lists:zip(Acc,lists:seq(1,lists:flatlength(Acc)))),
+  file:close(PcmFile).
+
 acc_loop(FileName, Pid_timing,GotMessageCounter,PidSender,TODELETE)->
   if GotMessageCounter rem 100 == 50 -> PidSender!GotMessageCounter,io:format("gotMessageCounter~p\n",[GotMessageCounter]);
     true -> ok
@@ -335,6 +357,23 @@ acc_loop(FileName, Pid_timing,GotMessageCounter,PidSender,TODELETE)->
     done -> io:format("got done"), killed , TODELETE
   end.
 
+
+msg_loop(GotMessageCounter,PidSender)->
+  if GotMessageCounter rem 100 == 50 -> PidSender!GotMessageCounter,io:format("gotMessageCounter~p\n",[GotMessageCounter]);
+    true -> ok
+  end.
+
+msgAcc_loop(FileName, Pid_timing,GotMessageCounter,PidSender,TODELETE)->
+  receive
+    {_, [Num]} when is_number(Num)->
+      TIME1 = erlang:timestamp(),
+      TODELETE2 = [round(Num)|TODELETE],
+      %write_to_file_3bytes(round(Num), FileName),
+      Pid_timing!{timer:now_diff(erlang:timestamp(), TIME1),<<1>>},
+      %io:format("acc ~p~n", [round(Num)]),
+      acc_loop(FileName, Pid_timing,GotMessageCounter+1,PidSender,TODELETE2);
+    done -> io:format("got done"), killed , TODELETE
+  end.
 
 %%---------------------------------------------------------
 %%      Timing process

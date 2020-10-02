@@ -70,11 +70,14 @@ start17neurons(Semp) ->
   PidTiming = spawn(fun()->pcm_handler:timing_process(self())end),
   PidSender = spawn_link(pcm_handler,pdm_process,[Semp, 40]),
   put(pid_data_sender,PidSender),
-  PidAcc = spawn(fun()->pcm_handler:acc_process("output_wave", PidTiming,PidSender)end),
+  PidMsg = spawn(fun()->pcm_handler:msg_process("output_wave",PidSender)end),
+  PidAccMsg = spawn(fun()->pcm_handler:msgAcc_process("output_wave", PidTiming,PidSender)end),
   io:format("here217~n"),
-  put(pid_data_getter,PidAcc),
+  put(pid_data_getter,PidAccMsg),
   Tid = ets_statem:new(neurons_data,[set,public]),
   NeuronName2Pid_map=  start_resonator_17stage(nonode, nonode, Tid),
+  neuron_statem:sendMessage(maps:get(afi11,NeuronName2Pid_map),maps:get(sum,NeuronName2Pid_map),<<1>>,x),
+  PidSender ! maps:get(afi11,NeuronName2Pid_map).
 
 start4neurons() ->
 
@@ -178,7 +181,7 @@ start_resonator_17stage(nonode, nonode, Tid) ->
   neuron_statem:pidConfig(maps:get(afi13,NeuronName2Pid_map), [enable,maps:get(afi12,NeuronName2Pid_map)],
     [afi23]),
   neuron_statem:pidConfig(maps:get(afi14,NeuronName2Pid_map), [enable,maps:get(afi13,NeuronName2Pid_map)],
-    [afi11,afi21,afi33,afb3]),
+    [afi11,afi21,afi33,afb3,{msgControl,get(pid_data_getter)}]),
   neuron_statem:pidConfig(maps:get(afi21,NeuronName2Pid_map), [enable,maps:get(afi14,NeuronName2Pid_map)],
     [afi22]),
   neuron_statem:pidConfig(maps:get(afi22,NeuronName2Pid_map), [enable,maps:get(afi21,NeuronName2Pid_map)],
