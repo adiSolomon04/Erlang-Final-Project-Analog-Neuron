@@ -43,12 +43,17 @@ foreachMessageSendToFirstNeuron([Head|Tail],Rand_gauss_var,SendingRateCounter,Se
       X when X == SendingRateCounter-50 ->
         if SendingRateCounter rem 10000 == 10000-50-> io:format("SendingRateCounter~p~n",[SendingRateCounter]);
           true -> ok
-        end
+        end;
+      wait -> S=self(),S!wait
     end;
     true -> ok
   end,
-  {NewNeuronPid,NewRand_gauss_var} = sendToFirstNeuron(Head,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid),
-  foreachMessageSendToFirstNeuron(Tail,NewRand_gauss_var,(SendingRateCounter+1) ,SendingRate, NewNeuronPid).
+  {NewNeuronPid,NewRand_gauss_var,ToCountinueCount} = sendToFirstNeuron(Head,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid),
+  if
+    ToCountinueCount == continue ->foreachMessageSendToFirstNeuron(Tail,NewRand_gauss_var,(SendingRateCounter+1) ,SendingRate, NewNeuronPid);
+    ToCountinueCount == 0->foreachMessageSendToFirstNeuron(Tail,NewRand_gauss_var,1 ,SendingRate, NewNeuronPid);
+    true -> io:format("problem")
+  end.
 
 
 sendToFirstNeuron(Acc,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid) ->
@@ -77,7 +82,7 @@ sendToFirstNeuron(Acc,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid) 
     wait -> NewNeuronPid=function_wait(NeuronPid),
       S=self(),
       neuron_statem:sendMessage(NewNeuronPid,S,Bit, x),
-      {NeuronPid,NewRand_gauss_var}
+      {NewNeuronPid,NewRand_gauss_var,0}
     after 0 ->
     if
       SendingRateCounter rem SendingRate == 0 -> timer:sleep(1);
@@ -86,14 +91,14 @@ sendToFirstNeuron(Acc,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid) 
     NewNeuronPid= NeuronPid,
       S=self(),
       neuron_statem:sendMessage(NeuronPid,S,Bit, x),
-    {NewNeuronPid,NewRand_gauss_var}
+    {NewNeuronPid,NewRand_gauss_var,continue}
   end.
 
 
 function_wait(NeuronPid)->
   receive
     stopWait ->NeuronPid;
-    {stopWait,NewNeuronPid} ->NewNeuronPid
+    {stopWait,NewNeuronPid} -> NewNeuronPid
 
   end.
 
@@ -372,6 +377,7 @@ acc_appendData_loop(Pid_timing,GotMessageCounter,PidSender,PidPlotGraph,ListAcc)
         true -> ListAccFinal = ListAccNew
       end,
       acc_appendData_loop(Pid_timing,GotMessageCounter+1,PidSender,PidPlotGraph,ListAccFinal);
+    zeroCounter -> acc_appendData_loop(Pid_timing,0,PidSender,PidPlotGraph,ListAcc);
     done -> io:format("got done") , PidPlotGraph!ListAcc
   end.
 
