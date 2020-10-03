@@ -12,7 +12,7 @@
 -behaviour(gen_statem).
 
 %% API
--export([start_link/2, start_link_global/2, pidConfig/3, sendMessage/4, stop/2]).
+-export([ start/1, start_link/2, start_link_global/2, pidConfig/3, sendMessage/4, stop/2]).
 
 %% gen_statem callbacks
 -export([init/1, format_status/2, state_name/3, handle_event/4, terminate/3,
@@ -29,8 +29,14 @@
 %% @doc Creates a gen_statem process which calls Module:init/1 to
 %% initialize. To ensure a synchronized start-up procedure, this
 %% function does not return until Module:init/1 has returned.
+
+%% We dont need a name in order to start
+%% Name is used for servers. see doc!
+start(NeuronParameters) ->
+  gen_statem:start(?MODULE, [NeuronParameters], []).
+
 start_link(Name_neuron_statem, NeuronParameters) ->
-  gen_statem:start_link({local, Name_neuron_statem}, ?MODULE, [NeuronParameters], []).
+  gen_statem:start_link(?MODULE, [NeuronParameters], []).
 
 %% Set name of statem as global
 start_link_global(Name_neuron_statem, NeuronParameters) ->

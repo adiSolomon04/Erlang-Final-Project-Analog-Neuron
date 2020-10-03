@@ -15,6 +15,34 @@
 -record(neuron_statem_state, {etsTid, actTypePar=identity,weightPar,biasPar=0,leakageFactorPar=5,leakagePeriodPar=73,pidIn=[],pidOut=[]}).
 
 %%%===================================================================
+%%%  Supervisor
+%%%===================================================================
+%% neuron_supervisor:start_shell().
+start_shell()->
+  register(shell, self()),
+  spawn(fun()->neuron_supervisor:start()end).
+
+start()->
+  %Set as a system process
+  process_flag(trap_exit, true),
+  %% Open an ets heir and holders process in every Node
+  %% Get messages with the Tid from ets processes.
+  Samp = pcm_handler:create_wave_list(100,115,1),
+  Map = neuron_supervisor:start4neurons(Samp, 0, fournodes),
+  supervisor(Map).
+
+supervisor(Map)->
+  receive
+    Message={'EXIT',_, _} -> %% from linked pid (linked to all)
+      shell!Message,
+      exit(die_bitch)
+  end.
+
+%% pdm to sleep.
+%% 17 process destroy.
+%% Reset Msg queue.
+
+%%%===================================================================
 %%%  4 Neurons Launcher
 %%%===================================================================
 
@@ -100,7 +128,7 @@ start_resonator_4stage(fournodes, _) ->
     {afi23, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5}, Node4}],
 
   NeuronName2Pid=lists:map(fun({Name, Record, Node}) ->
-    {ok,Pid}=rpc:call(Node, neuron_statem, start_link_global, [Name,Record]), {Name, Pid} end, Neurons),
+    {ok,Pid}=rpc:call(Node, neuron_statem, start, [Record]), link(Pid), {Name, Pid} end, Neurons),
   NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
 
   %%%% using global name {global, 'afi1'}.
@@ -114,8 +142,8 @@ start_resonator_4stage(fournodes, _) ->
   %neuron_statem:pidConfig({global, 'afi23'}, [enable,maps:get(afi22,NeuronName2Pid_map)],
   %  [maps:get(afi1, NeuronName2Pid_map)]),
 
-  %%%% using pid only.
-  %%%% rpc:call - start_link_global
+  %%%% using pid only, link
+  %%%% rpc:call - start, link
   neuron_statem:pidConfig(maps:get(afi1,NeuronName2Pid_map), [enable,get(pid_data_sender),maps:get(afi23,NeuronName2Pid_map)],
     [maps:get(afi21, NeuronName2Pid_map),{finalAcc,get(pid_acc_getter)}]),
   neuron_statem:pidConfig(maps:get(afi21,NeuronName2Pid_map), [enable,maps:get(afi1,NeuronName2Pid_map)],
@@ -170,47 +198,20 @@ get_new_atom(Node, Num) -> list_to_atom(lists:flatten(io_lib:format("~p~p", [Nod
 %%%===================================================================
 
 
-%  start(Nodes)->nothing.
-%  % Set as a system process
-%  process_flag(trap_exit, true),
-%
-%  %% Open an ets heir and holders process in every Node
-%  % Save as {Node, Pid} in a EtsProcessHeir, EtsHolders.
-%  EtsProcessHeir = lists:map(fun(Node)->{Node, spawn_link(Node, ets_statem, start_link/3, [self(), backup, none])} end, Nodes),
-%   EtsHolders = lists:map(fun({Node, PidHeir})->{Node, spawn_link(Node, ets_statem, start_link/3, [self(), ets_owner, PidHeir])} end, EtsProcessHeir),
-%
-%  %% Get messages with the Tid from ets processes.
-%  EtsTid = gatherTid(EtsHolders, []),
-%
-%  % uses zip: [{Node, LayerSize, Tid},...]
-%  % list of {Node, [{Pid,{Node, Tid}},....]}
-%  NeuronListPerNode = lists:map(fun createLayerNeurons/1, lists:zip3(NodeNames, ListLayerSize, EtsTid)),
-%  net_connect(remove_info(NeuronListPerNode)),
-%  %% create two maps of pids.
-%  %% One by nodes and pids, and one by pids
-%  % Returns #{Node->#{Pid->{Node,Tid}}}
-%  MapsPerNode = maps:from_list(lists:map(fun({Node, List}) ->{Node, maps:from_list(List)} end, NeuronListPerNode)),
-%  put(pid_per_node, MapsPerNode),
-%  MapsOfPid = maps:from_list(sum_all_pid(NeuronListPerNode)),
-%  put(pid, MapsOfPid),
-%  put(nodes, NodeNames),
-%  supervisor().
 
-
-
-supervisor()->
-  receive
-    {'EXIT',Pid, Reason} ->
-      case get(is_fix_mode) of
-        Bool when Bool==false -> rpc:pmap({'neuron_supervisor','fix_mode_node'}, [], maps:to_list(get(pid_per_node)));
-        true -> already_in_fix_mode
-      end,
-      PidList = gatherPid([{Pid, Reason}]),
-      lists:map(restoreNeuron/1, PidList)
-  ;
-    {nodedown, Node} -> need_restart
-  %% Todo: add API of neuron_statem:fix_mode(Pid) ->gen_statem:cast(Pid, fixMessage)
-  end.
+%supervisor()->
+%  receive
+%    {'EXIT',FromPid, Reason} ->
+%      case get(is_fix_mode) of
+%        Bool when Bool==false -> rpc:pmap({'neuron_supervisor','fix_mode_node'}, [], maps:to_list(get(pid_per_node)));
+%        true -> already_in_fix_mode
+%      end,
+%      PidList = gatherPid([{FromPid, Reason}]),
+%      lists:map(restoreNeuron/1, PidList)
+%  ;
+%    {nodedown, Node} -> need_restart
+%
+%  end.
 
 %% Get all of the Pid that fell.
 % Returns list of {Pid, Reason} that fell.
