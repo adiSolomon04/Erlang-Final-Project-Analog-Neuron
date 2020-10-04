@@ -17,10 +17,12 @@
 
 %% Spawn a python instance for graph plotting.
 %% Function is:
-%% plot_acc_vs_freq             Args=[file_data_name, start_freq]
-%% plot_acc_vs_freq_fromList    Args=[file_data_name, start_freq,List]
-%% plot_val_vs_time             Args=[file_data_name]
-%% plot_val_vs_time_fromList    Args=[file_data_name,List]
+%% plot_acc_vs_freq_fromlist   Args=[file_data_name, start_freq, list]
+%% plot_val_vs_time_fromlist   Args=[file_data_name, list]
+
+%% NOT USED
+%% plot_acc_vs_freq   Args=[file_data_name, start_freq]
+%% plot_val_vs_time  Args=[file_data_name]
 
 plot_graph(Function, Args)->
   spawn(fun() -> run_python(Function, Args) end).

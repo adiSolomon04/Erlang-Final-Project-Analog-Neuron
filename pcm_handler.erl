@@ -117,7 +117,7 @@ create_wave_list(Start_freq, End_freq, Samp_rate)->
   Samp_freq = 8000,		% Output PCM Sample frequency [Hz]
   Amplitude = 1000,
   PI2=6.283185307179586476925286766559, %%2*math:pi(),
-  Step = 200000,
+  Step = 200000, %% 200000
   Samp_rate_ratio = round(Clk_freq/Samp_freq + 0.5),
   %% Calc first Loop
   Sine_freq =Start_freq+ 1/Step,	% Waveform frequency [Hz]
@@ -458,5 +458,48 @@ write_zeros(Num, FileName) ->
   write_zeros(Num-1, FileName).
 
 
+
+%%---------------------------------------------------------
+%%      Testing write time
+%%---------------------------------------------------------
+
+%% we want to write millions of numbers to a file (using 'write_3_bytes')
+%% The goal is to write with the least amount of time.
+%% I will try to write 4 mill numbers, using a 'writing process'.
+%% The process will receive a List of size:
+%% 1000, 10000, 100000 and so on.
+%% The time will be captured.
+
+test_timing_write()->
+  %% Each number should be an int16.
+  Length=1000000,
+  List4mill = lists:map(fun(_)-> rand:uniform(65534)-32767 end, lists:seq(1,Length)),
+  ArgList=[{1000,"test1000"}, {10000,"test10000"},{100000,"test100000"}],
+  lists:map(fun(X)->test_timing_send_list(List4mill, X) end, ArgList).
+
+
+test_timing_send_list(List4mill, {SizeList,FileName})->
+  file:open(FileName++".pcm", [write, raw]),
+  MyPid=self(),
+  spawn(pcm_handler, split_send, [SizeList, MyPid, [], List4mill]),
+  TimeStart=erlang:timestamp(),
+  TimeEnd = test_timing_write_list(FileName),
+  {timer:now_diff(TimeEnd, TimeStart)/1000000, FileName}.
+
+
+test_timing_write_list(FileName)->
+  receive
+    done -> erlang:timestamp();
+    List -> lists:foreach(fun(X)->write_to_file_3bytes(X, FileName) end, List), test_timing_write_list(FileName)
+  end.
+
+%% Split to size and send.
+split_send(_, Pid, List1, [])->
+  Pid!List1,
+  Pid!done;
+split_send(Size, Pid, List1, List2)->
+  Pid!List1,
+  {_List1, _List2}=lists:split(Size, List2),
+  split_send(Size, Pid, _List1, _List2).
 
 
