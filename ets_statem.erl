@@ -38,7 +38,7 @@
 %% @returns:  {ok,MyPid}
 %% @sendMessage: if StartState =:= etsOwner -> send {{node(),self()},Tid}
 start_link(Name_ets_statem, Pid_Server, StartState, PidHeir) ->
-  gen_statem:start_link({local, Name_ets_statem}, ?MODULE, [Pid_Server,Name_ets_statem,StartState,PidHeir], []).
+  gen_statem:start({local, Name_ets_statem}, ?MODULE, [Pid_Server,Name_ets_statem,StartState,PidHeir], []).
 
 %% callChangePid
 %% @param:    Name_ets_statem the name of the statem (the name it will registered)
@@ -72,7 +72,7 @@ callChangeHeir(Name_ets_statem, Heir) ->
 init([Pid_Server,Name_ets_statem,backup,none]) ->
   S = self(),
   io:format("here1 ~p" ,[S]),
-  {ok, backupState, Pid_Server};
+  {ok, backupState, Name_ets_statem};
 
 %% calls from start_link
 %% @param:    the pid of the calling process
@@ -81,10 +81,10 @@ init([Pid_Server,Name_ets_statem,backup,none]) ->
 %% @sendMessage: if StartState =:= etsOwner -> send {{node(),self()},Tid}
 init([Pid_Server,Name_ets_statem,etsOwner,PidHeir]) ->
   %%todo: maybe need read/write_concurrency???
-  Tid = ets:new(neurons_data,[set,public,{heir,PidHeir,none}]),
+  Tid = ets:new(neurons_data,[set,public,{heir,PidHeir,Name_ets_statem}]),
   MyPlace = {node(),self()},
   Pid_Server!{MyPlace,Tid}, %% send the Tid back to the server
-  {ok, etsOwnerState, Tid}.
+  {ok, etsOwnerState, {Tid,Name_ets_statem}}.
 
 %% @private
 %% @doc This function is called by a gen_statem when it needs to find out
@@ -97,7 +97,7 @@ callback_mode() ->
 %% (2) when gen_statem terminates abnormally.
 %% This callback is optional.
 format_status(_Opt, [_PDict, _StateName, _State]) ->
-  Status = some_term,
+  Status = _StateName,
   Status.
 
 %% @private
@@ -111,25 +111,25 @@ format_status(_Opt, [_PDict, _StateName, _State]) ->
 %%            {changePid,{OldPid,NewPid}} = the Pid of the falling neuron and the new one
 %%            Tid - the state
 %% @sendMessage: replay {MyPlace,{updatePid,NewPid}}
-etsOwnerState({call,Pid_Server}, {changePid,{OldPid,NewPid}},Tid) ->
-  [NeuronData]=ets:take(Tid,OldPid),
+etsOwnerState({call,Pid_Server}, {changePid,{OldPid,NewPid}},{Tid,Name_ets_statem}) ->
+  [{OldPid,NeuronData}]=ets:take(Tid,OldPid),
   ets:insert_new(Tid,{NewPid,NeuronData}),
   MyPlace = {node(),self()},
   Reply = [{reply,Pid_Server,{MyPlace,{updatePid,NewPid}}}],
   NextStateName = etsOwnerState,
-  {next_state, NextStateName,Tid,Reply};
+  {next_state, NextStateName,{Tid,Name_ets_statem},Reply};
 
 %% calls from callChangeHeir
 %% @param:    {call,Pid_Server} - the pid of the calling process
 %%            changeHeir,{Heir}} = the Pid of the heir to update in the Tid option
 %%            Tid - the state
 %% @sendMessage: replay {MyPlace,{changedHeir,Heir}}
-etsOwnerState({call,Pid_Server}, {changeHeir,{Heir}},Tid) ->
-  ets:setopts(Tid,Heir),
+etsOwnerState({call,Pid_Server}, {changeHeir,{Heir}},{Tid,Name_ets_statem}) ->
+  ets:setopts(Tid,{heir, Heir, Name_ets_statem}),
   MyPlace = {node(),self()},
   Reply= [{reply,Pid_Server,{MyPlace,{changedHeir,Heir}}}],
   NextStateName = etsOwnerState,
-  {next_state, NextStateName,Tid, Reply}.
+  {next_state, NextStateName,{Tid,Name_ets_statem}, Reply}.
 
 
 %% calls when the ets owner process falls, take the charge of the ets
@@ -137,9 +137,15 @@ etsOwnerState({call,Pid_Server}, {changeHeir,{Heir}},Tid) ->
 %%            {'ETS-TRANSFER',Tid,_,_} - the message that the ets process fell and the Tid
 %% @next_state: etsOwnerState
 %% need to update the Heir of the Tid and open new backup process
-backupState(info, {'ETS-TRANSFER',Tid,_,_}, _) ->
+backupState(info, {'ETS-TRANSFER',Tid,_,HeirData}, Name_ets_statem) ->
+  {registered_name,OldName}=process_info(self(),registered_name ),
+  io:format("registered_name ~p~n",[OldName]),
+  unregister(OldName),
+  register(HeirData,self()),
+  %global:unregister_name(Name_ets_statem),
+  %global:register_name(HeirData,self()),
   NextStateName = etsOwnerState,
-  {next_state, NextStateName, Tid}.
+  {next_state, NextStateName, {Tid,HeirData}}.
 
 %% @private
 %% @doc If callback_mode is handle_event_function, then whenever a
