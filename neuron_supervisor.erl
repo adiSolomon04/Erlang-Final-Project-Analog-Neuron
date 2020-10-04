@@ -53,28 +53,28 @@ supervisor(Map)->
 
 %% List=pcm_handler:create_wave_list(0, 2, 1).
 %% neuron_supervisor:start4neurons(List, 0, fournodes).
-start4neurons(Samp,Start_freq, Resonator_options) ->
-  %% Get messages with the Tid from ets processes.
-  EtsTid = gatherTid(EtsHolders, []),
-
-  % uses zip: [{Node, LayerSize, Tid},...]
-  % list of {Node, [{Pid,{Node, Tid}},....]}
-  NeuronListPerNode = lists:map(fun createLayerNeurons/1, lists:zip3(NodeNames, ListLayerSize, EtsTid)),
-  net_connect(remove_info(NeuronListPerNode)),
-  %% create two maps of pids.
-  %% One by nodes and pids, and one by pids
-  % Returns #{Node->#{Pid->{Node,Tid}}}
-  MapsPerNode = maps:from_list(lists:map(fun({Node, List}) ->{Node, maps:from_list(List)} end, NeuronListPerNode)),
-  put(pid_per_node, MapsPerNode),
-  MapsOfPid = maps:from_list(sum_all_pid(NeuronListPerNode)),
-  put(pid, MapsOfPid),
-  put(nodes, NodeNames),
-  supervisor().
+%%start4neurons(Samp,Start_freq, Resonator_options) ->
+%%  %% Get messages with the Tid from ets processes.
+%%  EtsTid = gatherTid(EtsHolders, []),
+%%
+%%  % uses zip: [{Node, LayerSize, Tid},...]
+%%  % list of {Node, [{Pid,{Node, Tid}},....]}
+%%  NeuronListPerNode = lists:map(fun createLayerNeurons/1, lists:zip3(NodeNames, ListLayerSize, EtsTid)),
+%%  net_connect(remove_info(NeuronListPerNode)),
+%%  %% create two maps of pids.
+%%  %% One by nodes and pids, and one by pids
+%%  % Returns #{Node->#{Pid->{Node,Tid}}}
+%%  MapsPerNode = maps:from_list(lists:map(fun({Node, List}) ->{Node, maps:from_list(List)} end, NeuronListPerNode)),
+%%  put(pid_per_node, MapsPerNode),
+%%  MapsOfPid = maps:from_list(sum_all_pid(NeuronListPerNode)),
+%%  put(pid, MapsOfPid),
+%%  put(nodes, NodeNames),
+%%  supervisor().
 
 
 %% Semp = pcm_handler:create_wave_list(100,115,1).
 %% neuron_supervisor:start4neurons(Semp,100).
-start4neurons(Semp,Start_freq,Tid) ->
+start4neurons(Samp,Start_freq,Resonator_options) ->
   %pcm_handler:create_wave(Start_freq, End_freq, 1),
   io:format("here1~n"),
   PidTiming = spawn(fun()->pcm_handler:timing_process(self())end),
@@ -316,7 +316,7 @@ fix_resonator_4stage(nonode, _, Tid,NeuronName2Pid_mapOLD) ->
   io:format("~p",[Neurons]),
   io:format("1.1~n"),
 
-  NeuronName2Pid=lists:map(fun({Name, Record}) -> {ok,Pid}=neuron_statem:start_link(Name, Tid, {restore,Record,maps:get(Name,NeuronName2Pid_mapOLD)}), {Name, Pid} end, Neurons),
+  NeuronName2Pid=lists:map(fun({Name, Record}) -> {ok,Pid}=neuron_statem:start_link(Name, {restore,Record,maps:get(Name,NeuronName2Pid_mapOLD)}), {Name, Pid} end, Neurons),
   %list neuron name -> pid
   NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
   PidOldPidNewTuples = [{maps:get(X,NeuronName2Pid_mapOLD),maps:get(X,NeuronName2Pid_map)}||X <-maps:keys(NeuronName2Pid_map)],
