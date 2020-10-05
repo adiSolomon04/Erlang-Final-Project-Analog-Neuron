@@ -263,8 +263,14 @@ gotBitString(Pid, SynBitString, State= #neuron_statem_state{etsTid = EtsMap, pid
   if
     IsReady==false -> ets:insert(EtsMap,{self(),NewNeuronMap});
     true ->
-           [EnableMsg|EnableList]=maps:get(EnablePid,MsgMap),NewMsgMapEnable=maps:update(EnablePid,EnableList,NewMsgMap),NewMapUpdated=maps:update(msgMap,NewMsgMapEnable,NewNeuronMap),
-            ets:insert(EtsMap,{self(),NewMapUpdated}),
+            List=maps:get(EnablePid,MsgMap),
+            if
+              List==[]  ->EnableMsg=[],EnableList=[] ;
+              true -> [EnableMsg|EnableList]=List
+            end,
+           NewMsgMapEnable=maps:update(EnablePid,EnableList,NewMsgMap),
+           NewMapUpdated=maps:update(msgMap,NewMsgMapEnable,NewNeuronMap),
+           ets:insert(EtsMap,{self(),NewMapUpdated}),
            if
               EnableMsg==<<1>>->
                 NewState=State#neuron_statem_state{etsTid = EtsMap,pidIn =PidIn--[EnablePid]},gotBitStringEnabled(SynBitString,
