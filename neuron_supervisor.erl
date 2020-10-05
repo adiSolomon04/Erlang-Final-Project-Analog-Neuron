@@ -20,15 +20,20 @@
 %% neuron_supervisor:start_shell().
 start_shell()->
   register(shell, self()),
-  spawn(fun()->neuron_supervisor:start()end).
+  spawn(fun()->neuron_supervisor:start(four_nodes)end).
 
-start()->
+
+%%% Node_Conc is single_node / four_nodes
+start(Node_Conc)->
   %Set as a system process
   process_flag(trap_exit, true),
   %% Open an ets heir and holders process in every Node
   %% Get messages with the Tid from ets processes.
   Samp = pcm_handler:create_wave_list(100,115,1),
-  Nodes = ['adi@192.168.1.128','eran@192.168.1.128','emm@192.168.1.128','yuda@192.168.1.128'],
+  Nodes = case Node_Conc of
+            four_nodes -> [node(),'eran@192.168.1.128','emm@192.168.1.128','yuda@192.168.1.128'];
+            single_node -> [node()]
+          end,
   EtsBackupName = backup,
   EtsOwnerName = etsOwner,
   Self = self(),
@@ -39,7 +44,7 @@ start()->
 
   Tids = [Tid||{{_,_,_},Tid} <- OpenEts],
   io:format("1.~n"),
-  Map = neuron_supervisor:start4neurons(Samp, 0, fournodes,Nodes,Tids),
+  Map = neuron_supervisor:start4neurons(Samp, 0, Node_Conc, Nodes, Tids), % todo: edit start4neurons
   io:format("2.~n"),
   {PidTiming,PidSender,PidPlotGraph,PidAcc,NeuronName2Pid_map} = Map,
   erlang:monitor(process,PidSender),
@@ -47,6 +52,7 @@ start()->
   erlang:monitor(process,PidAcc),
   ListPid = maps:values(NeuronName2Pid_map),
   io:format("3.~n"),
+  %% monitor a process that links all of the neurons.
   {LinkedPid,LinkedRef} = spawn_monitor(fun()->lists:foreach(fun(X)->link(X)end,ListPid), receive Y->Y end end),
   io:format("4.~n"),
 
@@ -54,8 +60,8 @@ start()->
 
 supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,NeuronName2Pid_map,LinkedPid,Nodes,Tids,EtsOwnerName,EtsBackupName,OpenEts)->
   receive
-    {'DOWN', Ref, process, Pid, Why}->
-      io:format("~p~n",[{'DOWN', Ref, process, Pid, Why}]),
+    MessageDown={'DOWN', Ref, process, Pid, Why}->
+      io:format("~p~n",[MessageDown]),
       ValuePidEtsOwner = lists:search(fun({{_,PidEtsOwner,_},_}) ->PidEtsOwner==Pid end,OpenEts),
       io:format("~p~n",[ValuePidEtsOwner]),
       ValuePidBackup = lists:search(fun({{_,_,PidBackup},_}) ->PidBackup==Pid end,OpenEts),
@@ -124,27 +130,6 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,NeuronName2Pid_map,LinkedPid,
 %% neuron_supervisor:start4neurons(Samp,100, nonode).
 %% neuron_supervisor:start4neurons(Samp, 0, fournodes).
 
-%% List=pcm_handler:create_wave_list(0, 2, 1).
-%% neuron_supervisor:start4neurons(List, 0, fournodes).
-%%start4neurons(Samp,Start_freq, Resonator_options) ->
-%%  %% Get messages with the Tid from ets processes.
-%%  EtsTid = gatherTid(EtsHolders, []),
-%%
-%%  % uses zip: [{Node, LayerSize, Tid},...]
-%%  % list of {Node, [{Pid,{Node, Tid}},....]}
-%%  NeuronListPerNode = lists:map(fun createLayerNeurons/1, lists:zip3(NodeNames, ListLayerSize, EtsTid)),
-%%  net_connect(remove_info(NeuronListPerNode)),
-%%  %% create two maps of pids.
-%%  %% One by nodes and pids, and one by pids
-%%  % Returns #{Node->#{Pid->{Node,Tid}}}
-%%  MapsPerNode = maps:from_list(lists:map(fun({Node, List}) ->{Node, maps:from_list(List)} end, NeuronListPerNode)),
-%%  put(pid_per_node, MapsPerNode),
-%%  MapsOfPid = maps:from_list(sum_all_pid(NeuronListPerNode)),
-%%  put(pid, MapsOfPid),
-%%  put(nodes, NodeNames),
-%%  supervisor().
-
-
 %% Semp = pcm_handler:create_wave_list(100,115,1).
 %% neuron_supervisor:start4neurons(Semp,100).
 start4neurons(Samp,Start_freq,Resonator_options,Nodes, Tids) ->
@@ -194,16 +179,14 @@ start4neurons() ->
   %python_comm:plot_graph(plot_acc_vs_freq,["output_wave.pcm",Start_freq]).
 
 
-start_resonator_4stage(nonode, _,_) ->
-  Tid = ets:new(neurons_data,[set,public]),%% todo:change to ets_statem!!!!!!!!
+start_resonator_4stage(single_node, [Node],[Tid]) ->
   Neurons = [{afi1, #neuron_statem_state{etsTid=Tid,weightPar=[11,-9], biasPar=-1}},
     {afi21, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
     {afi22, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
     {afi23, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}}], % afi24, afi25, afi26, afi27,
-  % afb1, afb2, afb3, afb4,
-  % afi31, afi32, afi33, afi34],
 
-  NeuronName2Pid=lists:map(fun({Name, Record}) -> {ok,Pid}=neuron_statem:start_link(Name, Record), {Name, Pid} end, Neurons),
+  NeuronName2Pid=lists:map(fun({Name, Record}) ->
+    {ok,Pid}=rpc:call(Node, neuron_statem, start, [Record]), {Name, Pid} end, Neurons),
   %list neuron name -> pid
   NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
   neuron_statem:pidConfig(maps:get(afi1,NeuronName2Pid_map), [enable,get(pid_data_sender),maps:get(afi23,NeuronName2Pid_map)],
@@ -215,11 +198,9 @@ start_resonator_4stage(nonode, _,_) ->
   neuron_statem:pidConfig(maps:get(afi23,NeuronName2Pid_map), [enable,maps:get(afi22,NeuronName2Pid_map)],
     [maps:get(afi1, NeuronName2Pid_map)]),
   NeuronName2Pid_map;
-start_resonator_4stage(onenode, _,_) ->
-  do;
 
 %% neuron_supervisor:start_resonator_4stage(fournodes, hi, bye).
-start_resonator_4stage(fournodes, Nodes, Tids) ->
+start_resonator_4stage(four_nodes, Nodes, Tids) ->
   register(supervisor, self()),
   [Node1, Node2, Node3, Node4] = Nodes,
   [Tid1, Tid2, Tid3, Tid4] = Tids,
@@ -235,19 +216,9 @@ start_resonator_4stage(fournodes, Nodes, Tids) ->
     {ok,Pid}=rpc:call(Node, neuron_statem, start, [Record]), {Name, Pid} end, Neurons),
   NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
 
-  %%%% using global name {global, 'afi1'}.
-  %%%% rpc:call - start_link_global
-  %neuron_statem:pidConfig({global,'afi1'}, [enable,get(pid_data_sender),maps:get(afi23,NeuronName2Pid_map)],
-  %  [maps:get(afi21, NeuronName2Pid_map),{finalAcc,get(pid_acc_getter)}]),
-  %neuron_statem:pidConfig({global, 'afi21'}, [enable,maps:get(afi1,NeuronName2Pid_map)],
-  %  [maps:get(afi22, NeuronName2Pid_map)]),
-  %neuron_statem:pidConfig({global, 'afi22'}, [enable,maps:get(afi21,NeuronName2Pid_map)],
-  %  [maps:get(afi23, NeuronName2Pid_map)]),
-  %neuron_statem:pidConfig({global, 'afi23'}, [enable,maps:get(afi22,NeuronName2Pid_map)],
-  %  [maps:get(afi1, NeuronName2Pid_map)]),
-
-  %%%% using pid only, link
-  %%%% rpc:call - start, link
+  %%%% using pid only
+  %%%% rpc:call - start,
+  %%% later will be linked to center process
   neuron_statem:pidConfig(maps:get(afi1,NeuronName2Pid_map), [enable,get(pid_data_sender),maps:get(afi23,NeuronName2Pid_map)],
     [maps:get(afi21, NeuronName2Pid_map),{finalAcc,get(pid_acc_getter)}]),
   neuron_statem:pidConfig(maps:get(afi21,NeuronName2Pid_map), [enable,maps:get(afi1,NeuronName2Pid_map)],
@@ -268,6 +239,18 @@ start_resonator_4stage(fournodes, Nodes, Tids) ->
   %%  [maps:get(afi23, NeuronName2Pid_map)]),
   %%neuron_statem:pidConfig({maps:get(afi23,NeuronName2Pid_map), Node4}, [enable,maps:get(afi22,NeuronName2Pid_map)],
   %%  [maps:get(afi1, NeuronName2Pid_map)]),
+
+  %%%% using global name {global, 'afi1'}.
+  %%%% rpc:call - start_link_global
+  %neuron_statem:pidConfig({global,'afi1'}, [enable,get(pid_data_sender),maps:get(afi23,NeuronName2Pid_map)],
+  %  [maps:get(afi21, NeuronName2Pid_map),{finalAcc,get(pid_acc_getter)}]),
+  %neuron_statem:pidConfig({global, 'afi21'}, [enable,maps:get(afi1,NeuronName2Pid_map)],
+  %  [maps:get(afi22, NeuronName2Pid_map)]),
+  %neuron_statem:pidConfig({global, 'afi22'}, [enable,maps:get(afi21,NeuronName2Pid_map)],
+  %  [maps:get(afi23, NeuronName2Pid_map)]),
+  %neuron_statem:pidConfig({global, 'afi23'}, [enable,maps:get(afi22,NeuronName2Pid_map)],
+  %  [maps:get(afi1, NeuronName2Pid_map)]),
+
   NeuronName2Pid_map.
 
 
@@ -406,7 +389,8 @@ open_ets_satatem(Pid_Server,NodeName,EtsBackupName,EtsOwnerName)->
   {ok,PidEtsOwner} =  rpc:call(NodeName,ets_statem,start,[EtsOwnerName,Pid_Server,etsOwner,PidBackup]),
   erlang:monitor(process,PidEtsOwner),
   receive
-    {{Node,PidEtsOwner},Tid} ->io:format("open~n"),{{Node,PidEtsOwner,PidBackup},Tid}
+    {{Node,PidEtsOwner},Tid} ->io:format("open~n"),
+      {{Node,PidEtsOwner,PidBackup},Tid}
   end.
 
 %%%% Debugging adi
