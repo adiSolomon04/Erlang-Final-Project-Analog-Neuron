@@ -299,93 +299,6 @@ write_to_file(Samp, FileName) when Samp<(-32767) ->
 %%---------------------------------------------------------
 %%      Acc to File Writing - for graph plotting
 %%---------------------------------------------------------
-
-acc_process(FileName) ->
-  %%% add open for writing and closing.
-  {ok, PcmFile}= file:open(FileName++".pcm", [write, raw]),
-
-  acc_loop(FileName),
-  file:close(PcmFile).
-
-
-acc_loop(FileName)->
-
-  receive
-    {_, [Num]} when is_number(Num)->
-      write_to_file_3bytes(round(Num), FileName),
-      %io:format("acc ~p~n", [round(Num)]),
-      acc_loop(FileName);
-    done -> killed
-  end.
-
-%% Same, But sends bit to timing process.
-acc_process(FileName, Pid_timing,PidSender) ->
-  %%% add open for writing and closing.
-  {ok, PcmFile}= file:open(FileName++".pcm", [write, raw]),
-
-  Acc = acc_loop(FileName, Pid_timing,0,PidSender,[]),
-  io:format("start saving~n"),
-  python_comm:plot_graph(plot_acc_vs_freq_fromlist,["output_wave.pcm",100,Acc]),
-  io:format("end saving~n"),
-
-  %lists:foreach(fun({X,N})->write_to_file_3bytes(round(X), FileName),io:format("~p~n",[N]) end,lists:zip(Acc,lists:seq(1,lists:flatlength(Acc)))),
-  file:close(PcmFile).
-
-msg_process(FileName,PidSender) ->
-  %%% add open for writing and closing.
-  {ok, PcmFile}= file:open(FileName++".pcm", [write, raw]),
-
-  _ = msg_loop(0,PidSender),
-  io:format("start saving~n"),
-
-  io:format("end saving~n"),
-
-  %lists:foreach(fun({X,N})->write_to_file_3bytes(round(X), FileName),io:format("~p~n",[N]) end,lists:zip(Acc,lists:seq(1,lists:flatlength(Acc)))),
-  file:close(PcmFile).
-
-msgAcc_process(FileName, Pid_timing) ->
-  %%% add open for writing and closing.
-  {ok, PcmFile}= file:open(FileName++".pcm", [write, raw]),
-
-  MsgAcc = msgAcc_loop(FileName, Pid_timing,0,[]),
-  python_comm:plot_graph(plot_acc_vs_freq_fromlist,["output_wave.pcm",100,MsgAcc]),
-  %lists:foreach(fun({X,N})->write_to_file_3bytes(round(X), FileName),io:format("~p~n",[N]) end,lists:zip(Acc,lists:seq(1,lists:flatlength(Acc)))),
-  file:close(PcmFile).
-
-acc_loop(FileName, Pid_timing,GotMessageCounter,PidSender,TODELETE)->
-  if GotMessageCounter rem 100 == 50 -> PidSender!GotMessageCounter,io:format("gotMessageCounter~p\n",[GotMessageCounter]);
-    true -> ok
-  end,
-
-  receive
-    {_, [Num]} when is_number(Num)->
-      TIME1 = erlang:timestamp(),
-      TODELETE2 = [round(Num)|TODELETE],
-      %write_to_file_3bytes(round(Num), FileName),
-      Pid_timing!{timer:now_diff(erlang:timestamp(), TIME1),<<1>>},
-      %io:format("acc ~p~n", [round(Num)]),
-      acc_loop(FileName, Pid_timing,GotMessageCounter+1,PidSender,TODELETE2);
-    done -> io:format("got done"), killed , TODELETE
-  end.
-
-
-msg_loop(GotMessageCounter,PidSender)->
-  if GotMessageCounter rem 100 == 50 -> PidSender!GotMessageCounter,io:format("gotMessageCounter~p\n",[GotMessageCounter]);
-    true -> ok
-  end.
-
-msgAcc_loop(FileName, Pid_timing,GotMessageCounter,TODELETE)->
-  receive
-    {_, [Num]} when is_number(Num)->
-      TIME1 = erlang:timestamp(),
-      TODELETE2 = [round(Num)|TODELETE],
-      %write_to_file_3bytes(round(Num), FileName),
-      Pid_timing!{timer:now_diff(erlang:timestamp(), TIME1),<<1>>},
-      %io:format("acc ~p~n", [round(Num)]),
-      acc_loop(FileName, Pid_timing,GotMessageCounter+1,TODELETE2);
-    done -> io:format("got done"), killed , TODELETE
-   end.
-
 acc_process_appendData(Pid_timing,PidSender,PidPlotGraph) ->
   %%% add open for writing and closing.
 
@@ -393,13 +306,13 @@ acc_process_appendData(Pid_timing,PidSender,PidPlotGraph) ->
   PidPlotGraph!plot,
   io:format("exit acc~n").
 
-  %lists:foreach(fun({X,N})->write_to_file_3bytes(round(X), FileName),io:format("~p~n",[N]) end,lists:zip(Acc,lists:seq(1,lists:flatlength(Acc)))),
+%lists:foreach(fun({X,N})->write_to_file_3bytes(round(X), FileName),io:format("~p~n",[N]) end,lists:zip(Acc,lists:seq(1,lists:flatlength(Acc)))),
 
 acc_appendData_loop(Pid_timing,GotMessageCounter,PidSender,PidPlotGraph,ListAcc)->
   if GotMessageCounter rem 100 == 50 -> PidSender!GotMessageCounter,
-        if GotMessageCounter rem 10000 == (10000-50)-> io:format("gotMessageCounter~p\n",[GotMessageCounter]);
-        true -> ok
-      end;
+    if GotMessageCounter rem 10000 == (10000-50)-> io:format("gotMessageCounter~p\n",[GotMessageCounter]);
+      true -> ok
+    end;
     true -> ok
   end,
 
@@ -417,6 +330,105 @@ acc_appendData_loop(Pid_timing,GotMessageCounter,PidSender,PidPlotGraph,ListAcc)
     zeroCounter -> acc_appendData_loop(Pid_timing,0,PidSender,PidPlotGraph,ListAcc);
     done -> io:format("got done") , PidPlotGraph!ListAcc
   end.
+
+
+%%% 17 Neurons-----------------------------
+msg_process(PidSender) ->
+  %%% add open for writing and closing.
+  _ = msg_loop(0,PidSender).
+
+
+
+  %lists:foreach(fun({X,N})->write_to_file_3bytes(round(X), FileName),io:format("~p~n",[N]) end,lists:zip(Acc,lists:seq(1,lists:flatlength(Acc)))),
+
+msgAcc_process(Pid_timing,PidPlotGraph) ->
+  %%% add open for writing and closing.
+
+  MsgAcc = msgAcc_loop( Pid_timing,PidPlotGraph,0,[]),
+  python_comm:plot_graph(plot_acc_vs_freq_fromlist,["output_wave.pcm",100,MsgAcc]).
+  %lists:foreach(fun({X,N})->write_to_file_3bytes(round(X), FileName),io:format("~p~n",[N]) end,lists:zip(Acc,lists:seq(1,lists:flatlength(Acc)))),
+
+
+msg_loop(GotMessageCounter,PidSender)->
+  receive
+    _->
+  if GotMessageCounter rem 100 == 50 -> PidSender!GotMessageCounter,io:format("gotMessageCounter~p\n",[GotMessageCounter]);
+    true -> ok
+  end,msg_loop(GotMessageCounter+1,PidSender)
+end.
+%% zeroCounter -> msgAcc_loop(Pid_timing,PidPlotGraph,0,ListAcc);
+%% done -> io:format("got done") , PidPlotGraph!ListAcc
+
+msgAcc_loop(Pid_timing,PidPlotGraph,GotMessageCounter,ListAcc)->
+  receive
+    {_, [Num]} when is_number(Num)->
+      TIME1 = erlang:timestamp(),
+      ListAccNew = [round(Num)|ListAcc],
+      %write_to_file_3bytes(round(Num), FileName),
+      Pid_timing!{timer:now_diff(erlang:timestamp(), TIME1),<<1>>},
+      %io:format("acc ~p~n", [round(Num)]),
+      if GotMessageCounter rem 50000 == 0 -> PidPlotGraph!ListAcc, ListAccFinal =[];
+        true -> ListAccFinal = ListAccNew
+      end,
+      msgAcc_loop(Pid_timing,PidPlotGraph,GotMessageCounter+1,ListAccFinal);
+    zeroCounter -> msgAcc_loop(Pid_timing,PidPlotGraph,0,ListAcc);
+    done -> io:format("got done") , PidPlotGraph!ListAcc
+  end.
+%%% 17 Neurons-----------------------------
+
+
+
+%%% NOT IN USE-------------------------------------------------------
+acc_process(FileName) ->
+  %%% add open for writing and closing.
+  {ok, PcmFile}= file:open(FileName++".pcm", [write, raw]),
+
+  acc_loop(FileName),
+  file:close(PcmFile).
+acc_loop(FileName)->
+
+  receive
+    {_, [Num]} when is_number(Num)->
+      write_to_file_3bytes(round(Num), FileName),
+      %io:format("acc ~p~n", [round(Num)]),
+      acc_loop(FileName);
+    done -> killed
+  end.
+%% Same, But sends bit to timing process.
+acc_process(FileName, Pid_timing,PidSender) ->
+  %%% add open for writing and closing.
+  {ok, PcmFile}= file:open(FileName++".pcm", [write, raw]),
+
+  Acc = acc_loop(FileName, Pid_timing,0,PidSender,[]),
+  io:format("start saving~n"),
+  python_comm:plot_graph(plot_acc_vs_freq_fromlist,["output_wave.pcm",100,Acc]),
+  io:format("end saving~n"),
+
+  %lists:foreach(fun({X,N})->write_to_file_3bytes(round(X), FileName),io:format("~p~n",[N]) end,lists:zip(Acc,lists:seq(1,lists:flatlength(Acc)))),
+  file:close(PcmFile).
+acc_loop(FileName, Pid_timing,GotMessageCounter,PidSender,TODELETE)->
+  if GotMessageCounter rem 100 == 50 -> PidSender!GotMessageCounter,io:format("gotMessageCounter~p\n",[GotMessageCounter]);
+    true -> ok
+  end,
+
+  receive
+    {_, [Num]} when is_number(Num)->
+      TIME1 = erlang:timestamp(),
+      TODELETE2 = [round(Num)|TODELETE],
+      %write_to_file_3bytes(round(Num), FileName),
+      Pid_timing!{timer:now_diff(erlang:timestamp(), TIME1),<<1>>},
+      %io:format("acc ~p~n", [round(Num)]),
+      acc_loop(FileName, Pid_timing,GotMessageCounter+1,PidSender,TODELETE2);
+    done -> io:format("got done"), killed , TODELETE
+  end.
+%%% NOT IN USE----------------------------------------------------------
+
+
+
+
+
+
+
 
 %%---------------------------------------------------------
 %%      Timing process
