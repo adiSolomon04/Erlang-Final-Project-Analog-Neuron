@@ -52,6 +52,9 @@ sendMessage({final,Name_neuron_statem},SendPid,SynBitString,_) ->
   Name_neuron_statem!{SendPid,SynBitString};
 sendMessage({finalAcc,Name_neuron_statem},SendPid,_,Acc) ->
   Name_neuron_statem!{SendPid,Acc};
+sendMessage({msgControl,Name_neuron_statem},SendPid,_,Acc) ->
+  %io:format("Acc~p",[Acc]),
+  Name_neuron_statem!{SendPid,Acc};
 sendMessage(Name_neuron_statem,SendPid,SynBitString,_) ->
   gen_statem:cast(Name_neuron_statem,{SendPid,SynBitString}).
 
