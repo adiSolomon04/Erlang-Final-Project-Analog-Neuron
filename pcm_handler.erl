@@ -35,14 +35,25 @@ foreachMessageSendToFirstNeuron([],_,_,_, NeuronPid)->
   sccefully_send_all_message;
 foreachMessageSendToFirstNeuron([Head|Tail],Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid)->
   if SendingRateCounter rem 100 == 0, SendingRateCounter =/= 0->
-    io:format("wat to send ~p~n",[SendingRateCounter]),
+    if SendingRateCounter rem 10000 == 0-> io:format("wat to send ~p~n",[SendingRateCounter]);
+      true -> ok
+    end,
+
     receive
-      X when X == SendingRateCounter-50 ->io:format("SendingRateCounter~p~n",[SendingRateCounter])
+      X when X == SendingRateCounter-50 ->
+        if SendingRateCounter rem 10000 == 10000-50-> io:format("SendingRateCounter~p~n",[SendingRateCounter]);
+          true -> ok
+        end;
+      wait -> S=self(),S!wait
     end;
     true -> ok
   end,
-  {NewNeuronPid,NewRand_gauss_var} = sendToFirstNeuron(Head,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid),
-  foreachMessageSendToFirstNeuron(Tail,NewRand_gauss_var,(SendingRateCounter+1) ,SendingRate, NewNeuronPid).
+  {NewNeuronPid,NewRand_gauss_var,ToCountinueCount} = sendToFirstNeuron(Head,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid),
+  if
+    ToCountinueCount == continue ->foreachMessageSendToFirstNeuron(Tail,NewRand_gauss_var,(SendingRateCounter+1) ,SendingRate, NewNeuronPid);
+    ToCountinueCount == 0->foreachMessageSendToFirstNeuron(Tail,NewRand_gauss_var,1 ,SendingRate, NewNeuronPid);
+    true -> io:format("problem")
+  end.
 
 
 sendToFirstNeuron(Acc,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid) ->
@@ -71,7 +82,7 @@ sendToFirstNeuron(Acc,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid) 
     wait -> NewNeuronPid=function_wait(NeuronPid),
       S=self(),
       neuron_statem:sendMessage(NewNeuronPid,S,Bit, x),
-      {NeuronPid,NewRand_gauss_var}
+      {NewNeuronPid,NewRand_gauss_var,0}
     after 0 ->
     if
       SendingRateCounter rem SendingRate == 0 -> timer:sleep(1);
@@ -80,14 +91,14 @@ sendToFirstNeuron(Acc,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid) 
     NewNeuronPid= NeuronPid,
       S=self(),
       neuron_statem:sendMessage(NeuronPid,S,Bit, x),
-    {NewNeuronPid,NewRand_gauss_var}
+    {NewNeuronPid,NewRand_gauss_var,continue}
   end.
 
 
 function_wait(NeuronPid)->
   receive
     stopWait ->NeuronPid;
-    {stopWait,NewNeuronPid} ->NewNeuronPid
+    {stopWait,NewNeuronPid} -> NewNeuronPid
 
   end.
 
@@ -106,7 +117,7 @@ create_wave_list(Start_freq, End_freq, Samp_rate)->
   Samp_freq = 8000,		% Output PCM Sample frequency [Hz]
   Amplitude = 1000,
   PI2=6.283185307179586476925286766559, %%2*math:pi(),
-  Step = 200000,
+  Step = 200000, %% 200000
   Samp_rate_ratio = round(Clk_freq/Samp_freq + 0.5),
   %% Calc first Loop
   Sine_freq =Start_freq+ 1/Step,	% Waveform frequency [Hz]
@@ -373,6 +384,38 @@ msgAcc_loop(FileName, Pid_timing,GotMessageCounter,TODELETE)->
       %io:format("acc ~p~n", [round(Num)]),
       acc_loop(FileName, Pid_timing,GotMessageCounter+1,TODELETE2);
     done -> io:format("got done"), killed , TODELETE
+   end.
+
+acc_process_appendData(Pid_timing,PidSender,PidPlotGraph) ->
+  %%% add open for writing and closing.
+
+  Acc = acc_appendData_loop( Pid_timing,0,PidSender,PidPlotGraph,[]),
+  PidPlotGraph!plot,
+  io:format("exit acc~n").
+
+  %lists:foreach(fun({X,N})->write_to_file_3bytes(round(X), FileName),io:format("~p~n",[N]) end,lists:zip(Acc,lists:seq(1,lists:flatlength(Acc)))),
+
+acc_appendData_loop(Pid_timing,GotMessageCounter,PidSender,PidPlotGraph,ListAcc)->
+  if GotMessageCounter rem 100 == 50 -> PidSender!GotMessageCounter,
+        if GotMessageCounter rem 10000 == (10000-50)-> io:format("gotMessageCounter~p\n",[GotMessageCounter]);
+        true -> ok
+      end;
+    true -> ok
+  end,
+
+  receive
+    {_, [Num]} when is_number(Num)->
+      TIME1 = erlang:timestamp(),
+      ListAccNew = [round(Num)|ListAcc],
+      %write_to_file_3bytes(round(Num), FileName),
+      Pid_timing!{timer:now_diff(erlang:timestamp(), TIME1),<<1>>},
+      %io:format("acc ~p~n", [round(Num)]),
+      if GotMessageCounter rem 50000 == 0 -> PidPlotGraph!ListAcc, ListAccFinal =[];
+        true -> ListAccFinal = ListAccNew
+      end,
+      acc_appendData_loop(Pid_timing,GotMessageCounter+1,PidSender,PidPlotGraph,ListAccFinal);
+    zeroCounter -> acc_appendData_loop(Pid_timing,0,PidSender,PidPlotGraph,ListAcc);
+    done -> io:format("got done") , PidPlotGraph!ListAcc
   end.
 
 %%---------------------------------------------------------
@@ -452,5 +495,48 @@ write_zeros(Num, FileName) ->
   write_zeros(Num-1, FileName).
 
 
+
+%%---------------------------------------------------------
+%%      Testing write time
+%%---------------------------------------------------------
+
+%% we want to write millions of numbers to a file (using 'write_3_bytes')
+%% The goal is to write with the least amount of time.
+%% I will try to write 4 mill numbers, using a 'writing process'.
+%% The process will receive a List of size:
+%% 1000, 10000, 100000 and so on.
+%% The time will be captured.
+
+test_timing_write()->
+  %% Each number should be an int16.
+  Length=1000000,
+  List4mill = lists:map(fun(_)-> rand:uniform(65534)-32767 end, lists:seq(1,Length)),
+  ArgList=[{1000,"test1000"}, {10000,"test10000"},{100000,"test100000"}],
+  lists:map(fun(X)->test_timing_send_list(List4mill, X) end, ArgList).
+
+
+test_timing_send_list(List4mill, {SizeList,FileName})->
+  file:open(FileName++".pcm", [write, raw]),
+  MyPid=self(),
+  spawn(pcm_handler, split_send, [SizeList, MyPid, [], List4mill]),
+  TimeStart=erlang:timestamp(),
+  TimeEnd = test_timing_write_list(FileName),
+  {timer:now_diff(TimeEnd, TimeStart)/1000000, FileName}.
+
+
+test_timing_write_list(FileName)->
+  receive
+    done -> erlang:timestamp();
+    List -> lists:foreach(fun(X)->write_to_file_3bytes(X, FileName) end, List), test_timing_write_list(FileName)
+  end.
+
+%% Split to size and send.
+split_send(_, Pid, List1, [])->
+  Pid!List1,
+  Pid!done;
+split_send(Size, Pid, List1, List2)->
+  Pid!List1,
+  {_List1, _List2}=lists:split(Size, List2),
+  split_send(Size, Pid, _List1, _List2).
 
 
