@@ -45,6 +45,7 @@ start_link_global(Name_neuron_statem, NeuronParameters) ->
 %% Send neuron Pids.
 %% configure network
 pidConfig(Name_neuron_statem,PrevPid,NextPid) ->
+  io:format("a. config ~n"),
   gen_statem:call(Name_neuron_statem,{PrevPid,NextPid}).
 
 sendMessage({final,Name_neuron_statem},SendPid,SynBitString,_) ->
@@ -73,8 +74,9 @@ stop(Name_neuron_statem,AlreadyStop) ->
 %% @doc Whenever a gen_statem is started using gen_statem:start/[3,4] or
 %% gen_statem:start_link/[3,4], this function is called by the new
 %% process to initialize.
-init([EtsTid,{restore,NeuronParametersMap,ReplacePid}]) ->
+init([{restore,NeuronParametersMap,ReplacePid}]) ->
   % take the parameters from the ets
+  io:format("b. config ~n"),
 
   %[{ReplacePid,NeuronMap}]=ets:lookup(EtsTid,ReplacePid),
   {ok, restore_network_config, {NeuronParametersMap,ReplacePid}};
@@ -129,24 +131,26 @@ state_name(_EventType, _EventContent, State = #neuron_statem_state{}) ->
 
 
 
-network_config(cast, {PidGetMsg,PidSendMsg},
+network_config({call,Pid}, {PidGetMsg,PidSendMsg},
     State = #neuron_statem_state{
       etsTid = EtsId, actTypePar=ActType,
       weightPar=Weight,
       biasPar=Bias, leakageFactorPar=LF,
       leakagePeriodPar=LP}) ->
   erlang:display(config_network),
-
+  io:format("b.~n"),
   ListMsgMap = [{X,[]}||X <- PidGetMsg],
   MsgMap = maps:from_list(ListMsgMap),
   [PidEnabel|EnterPidGetMsg] =PidGetMsg,
   if PidEnabel==enable-> MsgMapFinal = maps:put(enable,[<<1>>],MsgMap) ;
       true -> MsgMapFinal = MsgMap
   end,
+  io:format("c.~n"),
   EtsMap = #{msgMap=> MsgMapFinal, acc => 0,pn_generator=>1,rand_gauss_var=>0,leakage_timer=>0},
   Self = self(),
   ets:insert(EtsId,{Self,EtsMap}),
    MapWeight = maps:from_list(lists:zip(EnterPidGetMsg,Weight)),
+  io:format("d.~n"),
 
 % save the pids
   NextStateName = analog_neuron,
@@ -159,7 +163,8 @@ network_config(cast, {PidGetMsg,PidSendMsg},
       leakageFactorPar=LF,
       leakagePeriodPar=LP,
       pidIn =PidGetMsg ,
-      pidOut=PidSendMsg}}.
+      pidOut=PidSendMsg},
+    [{reply,Pid,ok}]}.
 
 
 restore_network_config({call,Pid}, {PidGetMsg,PidSendMsg},{#neuron_statem_state{etsTid = EtsId, actTypePar=ActType,

@@ -12,7 +12,7 @@
 -behaviour(gen_statem).
 
 %% API
--export([start_link/4, callChangePid/3, callChangeHeir/2]).
+-export([start/4, callChangePid/3, callChangeHeir/2]).
 
 %% gen_statem callbacks
 -export([init/1, format_status/2, handle_event/4, terminate/3,
@@ -37,7 +37,7 @@
 %%                                   (the pid of the process that will get the table if the process falls)
 %% @returns:  {ok,MyPid}
 %% @sendMessage: if StartState =:= etsOwner -> send {{node(),self()},Tid}
-start_link(Name_ets_statem, Pid_Server, StartState, PidHeir) ->
+start(Name_ets_statem, Pid_Server, StartState, PidHeir) ->
   gen_statem:start({local, Name_ets_statem}, ?MODULE, [Pid_Server,Name_ets_statem,StartState,PidHeir], []).
 
 %% callChangePid
