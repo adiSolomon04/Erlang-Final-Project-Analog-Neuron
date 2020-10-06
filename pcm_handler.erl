@@ -19,24 +19,30 @@
 %% FileName - the full file name
 pdm_process(SendingRate)->
   receive
-    {neuron_pid, NeuronPid}->
-      receive
-        {supervisor, Supervisor}->
+    {config, NeuronPid, Supervisor}->
           put(neuron_pid, NeuronPid),
           put(supervisor, Supervisor),
           pdm_process_loop(SendingRate)
-      end
   end.
 
 pdm_process_loop(SendingRate)->
   receive
     {supervisor, Supervisor}-> put(supervisor, Supervisor), pdm_process_loop(SendingRate);
-    {test_network, Terms} -> %% Test the Net
+    {test_network, Terms} when is_list(Terms)-> %% Test the Net
+      io:format("testing network  ~p ~n", [get(neuron_pid)]),
       foreachMessageSendToFirstNeuron(Terms,0,0,SendingRate, get(neuron_pid)), pdm_process_loop(SendingRate);
     wait ->
       NeuronPid=function_wait(kill_and_recover),
       put(neuron_pid, NeuronPid),
-      pdm_process_loop(SendingRate)
+      pdm_process_loop(SendingRate);
+    kill_and_recover -> io:format("kill% recover ~n"),
+      receive
+                          wait -> io:format("kill% recover - wait ~n"),
+                            NeuronPid=function_wait(kill_and_recover),
+                            put(neuron_pid, NeuronPid),
+                            io:format("kill% recover - wait Pid: ~p~n", [NeuronPid]),
+                            pdm_process_loop(SendingRate)
+                        end
   end.
 
 pdm_process(Terms, SendingRate) when is_list(Terms)->
@@ -198,7 +204,7 @@ write_list_loop_avg(Samp_sum, Sine_freq, Phase, Samp_rate_count, Loops, Step, PI
   case Samp_rate_count of
     Samp_rate_ratio ->
 
-      if (Loops rem 10000) == 0 -> io:format("print ~p~n", [Loops]);
+      if (Loops rem 200000) == 0 -> io:format("print ~p~n", [Loops]);
         true -> ok
       end,
 
@@ -366,7 +372,12 @@ acc_appendData_loop(Pid_timing,GotMessageCounter,PidSender,PidPlotGraph,ListAcc)
         true -> ListAccFinal = ListAccNew
       end,
       acc_appendData_loop(Pid_timing,GotMessageCounter+1,PidSender,PidPlotGraph,ListAccFinal);
-    zeroCounter -> acc_appendData_loop(Pid_timing,0,PidSender,PidPlotGraph,ListAcc);
+    zeroCounter -> PidSenderNew = receive
+                                    {set_pid_sender, Pid}  -> Pid
+                                  after
+                                    0 -> PidSender
+                                  end,
+      acc_appendData_loop(Pid_timing,0,PidSenderNew,PidPlotGraph,ListAcc);
     done -> io:format("got done") , PidPlotGraph!ListAcc
   end.
 
