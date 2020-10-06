@@ -83,3 +83,31 @@ string_to_binary(List) ->
   %            end
   %  end
   %, List).
+
+%%%===================================================================
+%%% Testing Transfer Time python
+%%%===================================================================
+
+%% Testing - adi
+%List = pcm_handler:create_wave_list(0, 2.5, 1). %% 50 k
+%python_comm:run_python(plot_val_vs_time_fromlist, ["not used", List]).
+
+%% TEST RESULTS
+
+%%% 7> python_comm:run_python(plot_val_vs_time_fromlist, ["not used", List1]). %% 50 k
+%%% "Time: 0.324717 seconds" - other result are close.
+%%% 8> %% 50 k
+%%% 8> python_comm:run_python(plot_val_vs_time_fromlist, ["not used", List2]). %% 100 k
+%%% "Time: 1.092377 seconds" - other result are close.
+%%% 9> %% 100 k
+%%% 9> python_comm:run_python(plot_val_vs_time_fromlist, ["not used", List3]). %% 200 k
+%%% "Time: 4.655224 seconds"
+%%% "Time: 5.91483 seconds"
+%%% "Time: 3.813945 seconds"
+%%% "Time: 5.219672 seconds"
+%%% 10> %% 200 k
+%%% 10> python_comm:run_python(plot_val_vs_time_fromlist, ["not used", List4]). %% 300 k
+%%% "Time: 14.548159 seconds"
+%%% "Time: 16.541054 seconds"
+%%% "Time: 12.826313 seconds"
+%%% 11> %% 300 k

@@ -20,7 +20,7 @@
 %% neuron_supervisor:start_shell().
 start_shell()->
   register(shell, self()),
-  spawn(fun()->neuron_supervisor:start(four_nodes, 104.649)end).
+  spawn(fun()->neuron_supervisor:start(single_node, 200)end). %%104.649
 
 
 %%% Node_Conc is single_node / four_nodes
@@ -29,7 +29,7 @@ start(Node_Conc, Frequency_Detect)->
   process_flag(trap_exit, true),
   %% Open an ets heir and holders process in every Node
   %% Get messages with the Tid from ets processes.
-  Samp = pcm_handler:create_wave_list(100,115,1),
+  Samp = pcm_handler:create_wave_list(StartFreq=190,205,1),
   Nodes = case Node_Conc of
             four_nodes -> [node(),'eran@10.100.102.35','emm@10.100.102.35','yuda@10.100.102.35'];
             single_node -> [node()]
@@ -44,8 +44,8 @@ start(Node_Conc, Frequency_Detect)->
 
   Tids = [Tid||{{_,_,_},Tid} <- OpenEts],
   io:format("1.~n"),
-  put(freq, Frequency_Detect),
-  Map = neuron_supervisor:start4neurons(Samp, 0, Node_Conc, Nodes, Tids), % todo: edit start4neurons
+  put(freq, Frequency_Detect+4),
+  Map = neuron_supervisor:start4neurons(Samp, StartFreq, Node_Conc, Nodes, Tids), % todo: edit start4neurons
   io:format("2.~n"),
   {PidTiming,PidSender,PidPlotGraph,PidAcc,NeuronName2Pid_map} = Map,
   erlang:monitor(process,PidSender),
@@ -203,12 +203,17 @@ start4neurons() ->
 
 
 start_resonator_4stage(single_node, [Node],[Tid]) ->
-  Neurons = [{afi1, #neuron_statem_state{etsTid=Tid,weightPar=[11,-9], biasPar=-1}},
-    {afi21, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-    {afi22, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-    {afi23, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}}], % afi24, afi25, afi26, afi27,
-  % afb1, afb2, afb3, afb4,
-  % afi31, afi32, afi33, afi34],
+  Frequency_Detect=get(freq),
+  LF = 5,
+  LP =round((1.0)*(1.536*math:pow(10,6))/(Frequency_Detect*math:pow(2,LF)*2*math:pi())),
+  Gain=math:pow(2,(2*LF-3))*(1+LP),
+  Factor_Gain=(1.0)*9472/Gain,
+  io:format("FG ~p, LP ~p", [Factor_Gain, LP]),
+
+  Neurons = [{afi1, #neuron_statem_state{etsTid=Tid,weightPar=[11*Factor_Gain,-9*Factor_Gain], biasPar=-1*Factor_Gain, leakagePeriodPar = LP}},
+    {afi21, #neuron_statem_state{etsTid=Tid,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}},
+    {afi22, #neuron_statem_state{etsTid=Tid,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}},
+    {afi23, #neuron_statem_state{etsTid=Tid,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}}],
 
   NeuronName2Pid=lists:map(fun({Name, Record}) ->
     {ok,Pid}=rpc:call(Node, neuron_statem, start, [Record]), {Name, Pid} end, Neurons),
@@ -231,15 +236,16 @@ start_resonator_4stage(four_nodes, Nodes, Tids) ->
   [Tid1, Tid2, Tid3, Tid4] = Tids,
   Frequency_Detect=get(freq),
   LF = 5,
-  LP =(1.0)*(1.536*math:pow(10,6))/(Frequency_Detect*math:pow(2,LF)*2*math:pi()),
+  LP =round((1.0)*(1.536*math:pow(10,6))/(Frequency_Detect*math:pow(2,LF)*2*math:pi())),
   Gain=math:pow(2,(2*LF-3))*(1+LP),
   Factor_Gain=(1.0)*9472/Gain,
+  io:format("FG ~p, LP ~p", [Factor_Gain, LP]),
   %%% Start 4
   %%% statem neurons
-  Neurons = [{afi1, #neuron_statem_state{etsTid=Tid1,weightPar=[11*Factor_Gain,-9*Factor_Gain], biasPar=-1*Factor_Gain}, Node1},
-    {afi21, #neuron_statem_state{etsTid=Tid2,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain}, Node2},
-    {afi22, #neuron_statem_state{etsTid=Tid3,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain}, Node3},
-    {afi23, #neuron_statem_state{etsTid=Tid4,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain}, Node4}],
+  Neurons = [{afi1, #neuron_statem_state{etsTid=Tid1,weightPar=[11*Factor_Gain,-9*Factor_Gain], biasPar=-1*Factor_Gain, leakagePeriodPar = LP}, Node1},
+    {afi21, #neuron_statem_state{etsTid=Tid2,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}, Node2},
+    {afi22, #neuron_statem_state{etsTid=Tid3,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}, Node3},
+    {afi23, #neuron_statem_state{etsTid=Tid4,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}, Node4}],
 
   NeuronName2Pid=lists:map(fun({Name, Record, Node}) ->
     {ok,Pid}=rpc:call(Node, neuron_statem, start, [Record]), {Name, Pid} end, Neurons),
@@ -296,7 +302,7 @@ fix4neurons(Nodes, Tids,PidSender,PidAcc,EtsOwnerName,NeuronName2Pid_map) ->
   io:format("3~n"),
   neuron_statem:sendMessage(maps:get(afi1,NewNeuronName2Pid_map),maps:get(afi23,NewNeuronName2Pid_map),<<1>>,x),
   io:format("4~n"),
-  PidSender!{stopWait,maps:get(afi1,NewNeuronName2Pid_map)}, %%dead lock???,
+  PidSender!{stopWait,maps:get(afi1,NewNeuronName2Pid_map)},
   io:format("5~n"),
 
   NewNeuronName2Pid_map.
