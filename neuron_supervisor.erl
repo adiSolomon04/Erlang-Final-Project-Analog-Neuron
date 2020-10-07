@@ -22,7 +22,7 @@ start_shell()->
   case whereis(shell) of
     undefined -> register(shell, self())
   end,
-  spawn(fun()->neuron_supervisor:start(single_node, 17, 200)end). %%104.649
+  spawn(fun()->neuron_supervisor:start(four_nodes, 17, 200)end). %%104.649
 
 
 %%% Node_Conc is single_node / four_nodes
@@ -35,11 +35,11 @@ start(Node_Conc, Net_Size,  Frequency_Detect)->
   %% ====================
   %% INPUTS
   %% ====================
-  put(start_freq, StartFreq=200),
+  put(start_freq, StartFreq=195),
   put(stop_freq, StopFreq=205),
   put(net_size, Net_Size),
   Nodes = case Node_Conc of
-            four_nodes -> [node(),'eran@10.100.102.35','emm@10.100.102.35','yuda@10.100.102.35'];
+            four_nodes -> [node(),'eran@192.168.10.131','emm@192.168.10.131','yuda@192.168.10.131'];
             single_node -> [node()]
           end,
   %% ====================
@@ -279,7 +279,13 @@ start_resonator_17stage(single_node, [Node], [Tid]) ->
   pidConfig17(NeuronName2Pid_map),
   NeuronName2Pid_map;
 start_resonator_17stage(four_nodes, Nodes, Tids) ->
-  do. %% todo.
+  Neurons = get_17_neurons(Nodes, Tids),
+  NeuronName2Pid=lists:map(fun({Name, Record, Node}) ->
+  {ok,Pid}=rpc:call(Node, neuron_statem, start, [Record]), {Name, Pid} end, Neurons),
+  NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
+  pidConfig17(NeuronName2Pid_map),
+  NeuronName2Pid_map.
+
 
 %%%===================================================================
 %%%  Fix Network
@@ -393,14 +399,18 @@ get_4_neurons([Node1, Node2, Node3, Node4], [Tid1, Tid2, Tid3, Tid4])->
    {afi23, #neuron_statem_state{etsTid=Tid4,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}, Node4}].
 
 get_17_neurons(_,[Tid])->
-  [{afi11, #neuron_statem_state{etsTid=Tid,weightPar=[11,-9], biasPar=-1}},
-    {afi12, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-    {afi13, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-    {afi14, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-    {afi21, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-    {afi22, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-    {afi23, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-    {afi24, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
+  Frequency_Detect=get(freq), LF = 5,
+  LP =round((1.0)*(1.536*math:pow(10,6))/(Frequency_Detect*math:pow(2,LF)*2*math:pi())),
+  Gain=math:pow(2,(2*LF-3))*(1+LP),
+  Factor_Gain=(1.0)*9472/Gain,
+  [{afi11, #neuron_statem_state{etsTid=Tid,weightPar=[11*Factor_Gain,-9*Factor_Gain], biasPar=-1*Factor_Gain, leakagePeriodPar = LP}},
+    {afi12, #neuron_statem_state{etsTid=Tid,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}},
+    {afi13, #neuron_statem_state{etsTid=Tid,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}},
+    {afi14, #neuron_statem_state{etsTid=Tid,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}},
+    {afi21, #neuron_statem_state{etsTid=Tid,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}},
+    {afi22, #neuron_statem_state{etsTid=Tid,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}},
+    {afi23, #neuron_statem_state{etsTid=Tid,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}},
+    {afi24, #neuron_statem_state{etsTid=Tid,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}},
     {afb1, #neuron_statem_state{etsTid=Tid, actTypePar = binaryStep, weightPar=[10], biasPar=-5}},
     {afb2, #neuron_statem_state{etsTid=Tid, actTypePar = binaryStep, weightPar=[10], biasPar=-5}},
     {afb3, #neuron_statem_state{etsTid=Tid, actTypePar = binaryStep, weightPar=[10], biasPar=-5}},
@@ -412,25 +422,27 @@ get_17_neurons(_,[Tid])->
     {sum, #neuron_statem_state{etsTid=Tid,weightPar=[6,6,6,6], biasPar=-12, leakagePeriodPar = 500}}];
 
 get_17_neurons([Node1, Node2, Node3, Node4], [Tid1, Tid2, Tid3, Tid4])->
-  %% todo: Continue,
-  %% todo: add later freq changing.
-  [{afi11, #neuron_statem_state{etsTid=Tid1,weightPar=[11,-9], biasPar=-1}, Node1},
-    {afi12, #neuron_statem_state{etsTid=Tid1,weightPar=[10], biasPar=-5}, Node1},
-    {afi13, #neuron_statem_state{etsTid=Tid1,weightPar=[10], biasPar=-5}, Node1},
-    {afi14, #neuron_statem_state{etsTid=Tid1,weightPar=[10], biasPar=-5}},
-    {afi21, #neuron_statem_state{etsTid=Tid2,weightPar=[10], biasPar=-5}},
-    {afi22, #neuron_statem_state{etsTid=Tid2,weightPar=[10], biasPar=-5}},
-    {afi23, #neuron_statem_state{etsTid=Tid2,weightPar=[10], biasPar=-5}},
-    {afi24, #neuron_statem_state{etsTid=Tid2,weightPar=[10], biasPar=-5}},
-    {afb1, #neuron_statem_state{etsTid=Tid3, actTypePar = binaryStep, weightPar=[10], biasPar=-5}},
-    {afb2, #neuron_statem_state{etsTid=Tid3, actTypePar = binaryStep, weightPar=[10], biasPar=-5}},
-    {afb3, #neuron_statem_state{etsTid=Tid3, actTypePar = binaryStep, weightPar=[10], biasPar=-5}},
-    {afb4, #neuron_statem_state{etsTid=Tid3, actTypePar = binaryStep, weightPar=[10], biasPar=-5}},
-    {afi31, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5}},
-    {afi32, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5}},
-    {afi33, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5}},
-    {afi34, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5}},
-    {sum, #neuron_statem_state{etsTid=Tid4,weightPar=[6,6,6,6], biasPar=-12, leakagePeriodPar = 500}}].
+  Frequency_Detect=get(freq), LF = 5,
+  LP =round((1.0)*(1.536*math:pow(10,6))/(Frequency_Detect*math:pow(2,LF)*2*math:pi())),
+  Gain=math:pow(2,(2*LF-3))*(1+LP),
+  Factor_Gain=(1.0)*9472/Gain,
+  [{afi11, #neuron_statem_state{etsTid=Tid1,weightPar=[11*Factor_Gain,-9*Factor_Gain], biasPar=-1*Factor_Gain, leakagePeriodPar = LP}, Node1},
+    {afi12, #neuron_statem_state{etsTid=Tid1,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}, Node1},
+    {afi13, #neuron_statem_state{etsTid=Tid1,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}, Node1},
+    {afi14, #neuron_statem_state{etsTid=Tid1,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP},Node1},
+    {afi21, #neuron_statem_state{etsTid=Tid2,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP},Node2},
+    {afi22, #neuron_statem_state{etsTid=Tid2,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP},Node2},
+    {afi23, #neuron_statem_state{etsTid=Tid2,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP},Node2},
+    {afi24, #neuron_statem_state{etsTid=Tid2,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP},Node2},
+    {afb1, #neuron_statem_state{etsTid=Tid3, actTypePar = binaryStep, weightPar=[10], biasPar=-5},Node3},
+    {afb2, #neuron_statem_state{etsTid=Tid3, actTypePar = binaryStep, weightPar=[10], biasPar=-5},Node3},
+    {afb3, #neuron_statem_state{etsTid=Tid3, actTypePar = binaryStep, weightPar=[10], biasPar=-5},Node3},
+    {afb4, #neuron_statem_state{etsTid=Tid3, actTypePar = binaryStep, weightPar=[10], biasPar=-5},Node3},
+    {afi31, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5},Node4},
+    {afi32, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5},Node4},
+    {afi33, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5},Node4},
+    {afi34, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5},Node4},
+    {sum, #neuron_statem_state{etsTid=Tid4,weightPar=[6,6,6,6], biasPar=-12, leakagePeriodPar = 500},Node4}].
 
 pidConfig4(NeuronName2Pid_map)->
   %%%% using pid only
