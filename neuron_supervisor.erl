@@ -85,7 +85,7 @@ start(Node_Conc, Net_Size,  Frequency_Detect)->
   %% ====================
   %% Build Net
   %% ====================
-  put(freq, Frequency_Detect+4),% todo: change freq.
+  put(freq_detect, Frequency_Detect),% todo: change freq.
   NeuronName2Pid_map = case Net_Size of
                          4  -> neuron_supervisor:start4neurons(Node_Conc, Nodes, Tids);
                          17 -> neuron_supervisor:start17neurons(Node_Conc, Nodes, Tids)
@@ -103,7 +103,8 @@ start(Node_Conc, Net_Size,  Frequency_Detect)->
   ets:insert(HeirEts,[{pidTiming,PidTiming},{pidSender,PidSender},{pidPlotGraph,PidPlotGraph},
     {pidAcc,PidAcc},{neuronName2Pid_map,NeuronName2Pid_map},{linkedPid,LinkedPid},
     {nodes,Nodes}, {tids,Tids},{etsOwnerName,EtsOwnerName},
-    {etsBackupName,EtsBackupName},{openEts,OpenEts},{netSize, Net_Size}]),
+    {etsBackupName,EtsBackupName},{openEts,OpenEts},{netSize, Net_Size},
+    {freq, {StartFreq,StopFreq}}, {freqDetect, Frequency_Detect}]),
   supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,EtsOwnerName,EtsBackupName,OpenEts,HeirEts,HeirPid).
 
 supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,EtsOwnerName,EtsBackupName,OpenEts,HeirEts,HeirPid)->
@@ -165,6 +166,7 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,Lin
           end,
 
           ets:insert(HeirEts,[{pidSender,PidSenderNew}]),
+
           exit(LinkedPid, kill_and_recover),
           supervisor(PidTiming,PidSenderNew,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,EtsOwnerName,EtsBackupName,OpenEts, HeirEts,HeirPid);
 
@@ -174,6 +176,7 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,Lin
 
     {from_pdm, NumberOfMessages}->
       put(pdm_msg_number,get(pdm_msg_number)+NumberOfMessages),
+      ets:insert(HeirEts,[{pdmMsgNumber, get(pdm_msg_number)}]),
       supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,EtsOwnerName,EtsBackupName,OpenEts, HeirEts,HeirPid);
 
     {test_network,{StartFreq, StopFreq}}->
@@ -184,33 +187,15 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,Lin
   end.
 
 
-    %%   if Pid == PidBackup -> {ok,PidBackNew} = rpc:call(NodeName,ets_statem,start_link,[EtsBackupName,Pid_Server,backup,none]),
-    %%   rpc:call(NodeName,ets_statem,callChangeHeir,[PidEtsOwner,PidBackNew]),
-    %%   erlang:monitor(process,PidBackNew),
-    %%   supervisorEranLoop(NodeName,Pid_Server,EtsOwnerName,PidEtsOwner,EtsBackupName,PidBackNew,PidTiming,PidSender,PidPlotGraph,PidAcc,NeuronName2Pid_map,LinkedPid,Tid);
-    %%   Pid == PidEtsOwner -> {ok,PidBackNew} = rpc:call(NodeName,ets_statem,start_link,[EtsBackupName,Pid_Server,backup,none]),
-    %%     rpc:call(NodeName,ets_statem,callChangeHeir,[PidBackup,PidBackNew]),
-    %%     erlang:monitor(process,PidBackNew),
-    %%     supervisorEranLoop(NodeName,Pid_Server,EtsOwnerName,PidBackup,EtsBackupName,PidBackNew,PidTiming,PidSender,PidPlotGraph,PidAcc,NeuronName2Pid_map,LinkedPid,Tid);
-    %%   Pid == LinkedPid ->
-    %%     NewNeuronName2Pid_map = rpc:call(NodeName,neuron_supervisor,fix4neurons,[NodeName,PidSender,PidAcc,PidEtsOwner,Tid,NeuronName2Pid_map]),
-    %%     io:format("~p~n",[NewNeuronName2Pid_map]),
-    %%     ListPid = maps:values(NewNeuronName2Pid_map),
-    %%     {NewLinkedPid,LinkedRef} = spawn_monitor(fun()->lists:foreach(fun(X)->link(X)end,ListPid), receive Y->Y end end),
-    %%     supervisorEranLoop(NodeName,Pid_Server,EtsOwnerName,PidEtsOwner,EtsBackupName,PidBackup,PidTiming,PidSender,PidPlotGraph,PidAcc,NewNeuronName2Pid_map,NewLinkedPid,Tid);
-
-    %%   true -> fix
-    %% end
-  %PidPlotGraph = spawn_link(python_comm,plot_graph_process,[append_acc_vs_freq,plot_acc_vs_freq_global,[Start_freq]])
-
 protectionPid()->
   receive
     {'ETS-TRANSFER',HeirEts,_,_}->PidTiming=ets:lookup(HeirEts,pidTiming),PidSender=ets:lookup(HeirEts,pidSender),
       PidPlotGraph=ets:lookup(HeirEts,pidPlotGraph),PidAcc=ets:lookup(HeirEts,pidAcc),PidMsg=ets:lookup(HeirEts,pidMsg),NeuronName2Pid_map=ets:lookup(HeirEts,neuronName2Pid_map),
       LinkedPid=ets:lookup(HeirEts,linkedPid),Nodes=ets:lookup(HeirEts,nodes),Tids=ets:lookup(HeirEts,tids),
       EtsOwnerName=ets:lookup(HeirEts,etsOwnerName),EtsBackupName=ets:lookup(HeirEts,etsBackupName),OpenEts=ets:lookup(HeirEts,openEts),
-      Net_Size=ets:lookup(HeirEts,netSize),
-      put(net_size, Net_Size),
+      Net_Size=ets:lookup(HeirEts,netSize),put(pdm_msg_number,ets:lookup(HeirEts,pdmMsgNumber)),put(net_size, Net_Size),
+      put(freq, ets:lookup(HeirEts,freq)),
+      put(freq_detect, ets:lookup(HeirEts,freqDetect)),
       {HeirPid,_}=spawn_monitor(fun()->protectionPid() end),
       erlang:monitor(process,PidSender),
       PidSender!{supervisor, self()},
@@ -378,7 +363,7 @@ fix_resonator_17stage(onenode, Node, Tid,NeuronName2Pid_mapOLD) ->
 %%%  Fix Network
 %%%===================================================================
 get_4_neurons(_,[Tid])->
-  Frequency_Detect=get(freq), LF = 5, %% todo: save freq after crush.
+  Frequency_Detect=get(freq_detect), LF = 5, %% todo: save freq after crush.
   LP =round((1.0)*(1.536*math:pow(10,6))/(Frequency_Detect*math:pow(2,LF)*2*math:pi())),
   Gain=math:pow(2,(2*LF-3))*(1+LP),
   Factor_Gain=(1.0)*9472/Gain,
@@ -389,7 +374,7 @@ get_4_neurons(_,[Tid])->
 
 
 get_4_neurons([Node1, Node2, Node3, Node4], [Tid1, Tid2, Tid3, Tid4])->
-  Frequency_Detect=get(freq), LF = 5,
+  Frequency_Detect=get(freq_detect), LF = 5,
   LP =round((1.0)*(1.536*math:pow(10,6))/(Frequency_Detect*math:pow(2,LF)*2*math:pi())),
   Gain=math:pow(2,(2*LF-3))*(1+LP),
   Factor_Gain=(1.0)*9472/Gain,
@@ -399,7 +384,7 @@ get_4_neurons([Node1, Node2, Node3, Node4], [Tid1, Tid2, Tid3, Tid4])->
    {afi23, #neuron_statem_state{etsTid=Tid4,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}, Node4}].
 
 get_17_neurons(_,[Tid])->
-  Frequency_Detect=get(freq), LF = 5,
+  Frequency_Detect=get(freq_detect), LF = 5,
   LP =round((1.0)*(1.536*math:pow(10,6))/(Frequency_Detect*math:pow(2,LF)*2*math:pi())),
   Gain=math:pow(2,(2*LF-3))*(1+LP),
   Factor_Gain=(1.0)*9472/Gain,
@@ -422,7 +407,7 @@ get_17_neurons(_,[Tid])->
     {sum, #neuron_statem_state{etsTid=Tid,weightPar=[6,6,6,6], biasPar=-12, leakagePeriodPar = 500}}];
 
 get_17_neurons([Node1, Node2, Node3, Node4], [Tid1, Tid2, Tid3, Tid4])->
-  Frequency_Detect=get(freq), LF = 5,
+  Frequency_Detect=get(freq_detect), LF = 5,
   LP =round((1.0)*(1.536*math:pow(10,6))/(Frequency_Detect*math:pow(2,LF)*2*math:pi())),
   Gain=math:pow(2,(2*LF-3))*(1+LP),
   Factor_Gain=(1.0)*9472/Gain,
