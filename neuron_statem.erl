@@ -66,6 +66,8 @@ stop({final,Name_neuron_statem},_) ->
 stop({finalAcc,Name_neuron_statem},_) ->
   io:format("stop~p",[Name_neuron_statem]),
   Name_neuron_statem!done;
+stop({msgControl,Name_neuron_statem},_) ->
+  Name_neuron_statem!done;
 stop(Name_neuron_statem,AlreadyStop) ->
   gen_statem:cast(Name_neuron_statem,{stop,AlreadyStop}).
 
@@ -263,7 +265,7 @@ gotBitString(Pid, SynBitString, State= #neuron_statem_state{etsTid = EtsMap, pid
   if
     IsReady==false -> ets:insert(EtsMap,{self(),NewNeuronMap});
     true ->
-            List=maps:get(EnablePid,MsgMap),
+            List=maps:get(EnablePid,NewMsgMap),
             if
               List==[]  ->EnableMsg=[],EnableList=[] ;
               true -> [EnableMsg|EnableList]=List
@@ -276,14 +278,14 @@ gotBitString(Pid, SynBitString, State= #neuron_statem_state{etsTid = EtsMap, pid
                 NewState=State#neuron_statem_state{etsTid = EtsMap,pidIn =PidIn--[EnablePid]},gotBitStringEnabled(SynBitString,
                   NewState,EnablePid);
               true ->
-                NewState=State#neuron_statem_state{etsTid = EtsMap},gotBitStringNotEnable(NewState)
+                NewState=State#neuron_statem_state{etsTid = EtsMap,pidIn =PidIn--[EnablePid]},gotBitStringNotEnable(NewState)
            end
   end,
   if
     EnablePid==enable ->
       [{Self,Map}]=ets:lookup(EtsMap,Self),Msg=maps:get(msgMap,Map),NewMap=maps:update(msgMap,maps:update(enable,[<<1>>],Msg),Map),
       ets:insert(EtsMap,{self(),NewMap});
-    true -> ok
+    true ->  ok
   end.
 
 
@@ -294,10 +296,10 @@ gotBitStringEnabled(SynBitString, State= #neuron_statem_state{etsTid = EtsMap, p
   calculations(State#neuron_statem_state{etsTid = EtsMap,pidOut=PidOut},InputsMap,size(SynBitString),1,[],[]),
   State#neuron_statem_state{etsTid = EtsMap,pidIn = [EnablePid]++PidIn}.
 
-gotBitStringNotEnable(_= #neuron_statem_state{etsTid = EtsId, actTypePar=ActType,pidOut=PidOut}) ->Self = self(),
+gotBitStringNotEnable(_= #neuron_statem_state{etsTid = EtsId, actTypePar=ActType,pidIn =PidIn,pidOut=PidOut}) ->Self = self(),
   [{Self,NeuronMap}]=ets:lookup(EtsId,Self),
   Acc=maps:get(acc,NeuronMap),
-  maps:update(msgMap,maps:new(),NeuronMap),
+  __=getLists(EtsId,NeuronMap,maps:get(msgMap,NeuronMap),PidIn,maps:new()),
   case ActType of
     identity-> OutputBit=handleIdentity(EtsId,Acc);
     binaryStep-> OutputBit=handleBinaryStep(Acc);

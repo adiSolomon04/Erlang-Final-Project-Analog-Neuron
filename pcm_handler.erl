@@ -323,7 +323,7 @@ acc_appendData_loop(Pid_timing,GotMessageCounter,PidSender,PidPlotGraph,ListAcc)
       %write_to_file_3bytes(round(Num), FileName),
       Pid_timing!{timer:now_diff(erlang:timestamp(), TIME1),<<1>>},
       %io:format("acc ~p~n", [round(Num)]),
-      if GotMessageCounter rem 50000 == 0 -> PidPlotGraph!ListAcc, ListAccFinal =[];
+      if GotMessageCounter rem 50000 == 0 -> PidPlotGraph!ListAccNew, ListAccFinal =[];
         true -> ListAccFinal = ListAccNew
       end,
       acc_appendData_loop(Pid_timing,GotMessageCounter+1,PidSender,PidPlotGraph,ListAccFinal);
@@ -345,14 +345,17 @@ msgAcc_process(Pid_timing,PidPlotGraph) ->
   %%% add open for writing and closing.
 
   MsgAcc = msgAcc_loop( Pid_timing,PidPlotGraph,0,[]),
-  python_comm:plot_graph(plot_acc_vs_freq_fromlist,["output_wave.pcm",100,MsgAcc]).
-  %lists:foreach(fun({X,N})->write_to_file_3bytes(round(X), FileName),io:format("~p~n",[N]) end,lists:zip(Acc,lists:seq(1,lists:flatlength(Acc)))),
+  PidPlotGraph!plot,
+  io:format("exit acc~n").
 
 
 msg_loop(GotMessageCounter,PidSender)->
   receive
     _->
-  if GotMessageCounter rem 100 == 50 -> PidSender!GotMessageCounter,io:format("gotMessageCounter~p\n",[GotMessageCounter]);
+  if GotMessageCounter rem 100 == 50 -> PidSender!GotMessageCounter,
+    if GotMessageCounter rem 10000 == (10000-50)-> io:format("gotMessageCounter~p\n",[GotMessageCounter]);
+        true -> ok
+    end;
     true -> ok
   end,msg_loop(GotMessageCounter+1,PidSender)
 end.
@@ -367,7 +370,7 @@ msgAcc_loop(Pid_timing,PidPlotGraph,GotMessageCounter,ListAcc)->
       %write_to_file_3bytes(round(Num), FileName),
       Pid_timing!{timer:now_diff(erlang:timestamp(), TIME1),<<1>>},
       %io:format("acc ~p~n", [round(Num)]),
-      if GotMessageCounter rem 50000 == 0 -> PidPlotGraph!ListAcc, ListAccFinal =[];
+      if GotMessageCounter rem 50000 == 0 -> PidPlotGraph!ListAccNew, ListAccFinal =[];
         true -> ListAccFinal = ListAccNew
       end,
       msgAcc_loop(Pid_timing,PidPlotGraph,GotMessageCounter+1,ListAccFinal);
