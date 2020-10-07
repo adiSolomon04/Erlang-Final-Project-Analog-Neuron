@@ -17,9 +17,46 @@
 %%      Creating PDM input from PCM file
 %%---------------------------------------------------------
 %% FileName - the full file name
+pdm_process(SendingRate)->
+  receive
+    {config, NeuronPid, Supervisor}->
+          put(neuron_pid, NeuronPid),
+          put(supervisor, Supervisor),
+          pdm_process_loop(SendingRate)
+  end.
+
+pdm_process_loop(SendingRate)->
+  receive
+    {supervisor, Supervisor}-> put(supervisor, Supervisor), pdm_process_loop(SendingRate);
+    {test_network, Terms} when is_list(Terms)-> %% Test the Net
+      foreachMessageSendToFirstNeuron(Terms,0,0,SendingRate, get(neuron_pid)), pdm_process_loop(SendingRate);
+    wait ->
+      NeuronPid=function_wait(kill_and_recover),
+      put(neuron_pid, NeuronPid),
+      pdm_process_loop(SendingRate);
+    kill_and_recover ->
+      receive
+                          wait ->
+                            NeuronPid=function_wait(kill_and_recover),
+                            put(neuron_pid, NeuronPid),
+                            io:format("kill% recover - wait Pid: ~p~n", [NeuronPid]),
+                            pdm_process_loop(SendingRate)
+                        end
+  end.
+
 pdm_process(Terms, SendingRate) when is_list(Terms)->
   receive
-    NeuronPid -> foreachMessageSendToFirstNeuron(Terms,0,0,SendingRate, NeuronPid)
+    {supervisor, Supervisor}-> put(supervisor, Supervisor), pdm_process([], SendingRate);
+    NeuronPid ->
+      put(neuron_pid, NeuronPid),
+      %% Need to call again for pdm_process([], SendingRate)
+      foreachMessageSendToFirstNeuron(Terms,0,0,SendingRate, NeuronPid);
+    {test_network, Terms} -> %% Test the Net
+      foreachMessageSendToFirstNeuron(Terms,0,0,SendingRate, get(neuron_pid));
+    wait ->
+      NeuronPid=function_wait(kill_and_recover),
+      put(neuron_pid, NeuronPid),
+      foreachMessageSendToFirstNeuron(Terms,0,0,SendingRate, NeuronPid)
   end;
 pdm_process(FileName, SendingRate)->
   Terms = read_file_consult(FileName),
@@ -35,10 +72,11 @@ foreachMessageSendToFirstNeuron([],_,_,_, NeuronPid)->
   sccefully_send_all_message;
 foreachMessageSendToFirstNeuron([Head|Tail],Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid)->
   if SendingRateCounter rem 100 == 0, SendingRateCounter =/= 0->
+    %% only printing
     if SendingRateCounter rem 10000 == 0-> io:format("wat to send ~p~n",[SendingRateCounter]);
       true -> ok
     end,
-
+    %% wait for message to continue sending
     receive
       X when X == SendingRateCounter-50 ->
         if SendingRateCounter rem 10000 == 10000-50-> io:format("SendingRateCounter~p~n",[SendingRateCounter]);
@@ -46,7 +84,12 @@ foreachMessageSendToFirstNeuron([Head|Tail],Rand_gauss_var,SendingRateCounter,Se
         end;
       wait -> S=self(),S!wait
     end;
+    %% send message number to supervisor
     true -> ok
+  end,
+   if SendingRateCounter rem 1000 == 0, SendingRateCounter =/= 0-> nothing_yet;
+     %%get(supervisor)!{from_pdm, 1000};
+     true -> ok
   end,
   {NewNeuronPid,NewRand_gauss_var,ToCountinueCount} = sendToFirstNeuron(Head,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid),
   if
@@ -82,7 +125,8 @@ sendToFirstNeuron(Acc,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid) 
     wait -> NewNeuronPid=function_wait(NeuronPid),
       S=self(),
       neuron_statem:sendMessage(NewNeuronPid,S,Bit, x),
-      {NewNeuronPid,NewRand_gauss_var,0}
+      {NewNeuronPid,NewRand_gauss_var,0};
+    {supervisor, NewSupervisor}-> put(supervisor, NewSupervisor)
     after 0 ->
     if
       SendingRateCounter rem SendingRate == 0 -> timer:sleep(1);
@@ -98,7 +142,7 @@ sendToFirstNeuron(Acc,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid) 
 function_wait(NeuronPid)->
   receive
     stopWait ->NeuronPid;
-    {stopWait,NewNeuronPid} -> NewNeuronPid
+    {stopWait,NewNeuronPid} -> put(neuron_pid, NewNeuronPid),NewNeuronPid
 
   end.
 
@@ -159,7 +203,7 @@ write_list_loop_avg(Samp_sum, Sine_freq, Phase, Samp_rate_count, Loops, Step, PI
   case Samp_rate_count of
     Samp_rate_ratio ->
 
-      if (Loops rem 10000) == 0 -> io:format("print ~p~n", [Loops]);
+      if (Loops rem 200000) == 0 -> io:format("print ~p~n", [Loops]);
         true -> ok
       end,
 
@@ -327,7 +371,12 @@ acc_appendData_loop(Pid_timing,GotMessageCounter,PidSender,PidPlotGraph,ListAcc)
         true -> ListAccFinal = ListAccNew
       end,
       acc_appendData_loop(Pid_timing,GotMessageCounter+1,PidSender,PidPlotGraph,ListAccFinal);
-    zeroCounter -> acc_appendData_loop(Pid_timing,0,PidSender,PidPlotGraph,ListAcc);
+    zeroCounter -> PidSenderNew = receive
+                                    {set_pid_sender, Pid}  -> Pid
+                                  after
+                                    0 -> PidSender
+                                  end,
+      acc_appendData_loop(Pid_timing,0,PidSenderNew,PidPlotGraph,ListAcc);
     done -> io:format("got done") , PidPlotGraph!ListAcc
   end.
 
@@ -335,7 +384,7 @@ acc_appendData_loop(Pid_timing,GotMessageCounter,PidSender,PidPlotGraph,ListAcc)
 %%% 17 Neurons-----------------------------
 msg_process(PidSender) ->
   %%% add open for writing and closing.
-  _ = msg_loop(0,PidSender).
+  msg_loop(0,PidSender).
 
 
 
@@ -351,13 +400,20 @@ msgAcc_process(Pid_timing,PidPlotGraph) ->
 
 msg_loop(GotMessageCounter,PidSender)->
   receive
-    _->
-  if GotMessageCounter rem 100 == 50 -> PidSender!GotMessageCounter,
-    if GotMessageCounter rem 10000 == (10000-50)-> io:format("gotMessageCounter~p\n",[GotMessageCounter]);
+    zeroCounter -> io:format("zeroCounter - wait for Pid~n"),
+      PidSenderNew = receive
+                       {set_pid_sender, Pid}  -> io:format("Pid Sender~p~n",[Pid]),Pid
+                     after
+                       0 -> PidSender
+                     end,
+      msg_loop(0,PidSenderNew);
+    {_, [Num]} when is_number(Num)->
+      if GotMessageCounter rem 100 == 50 -> PidSender!GotMessageCounter,    if GotMessageCounter rem 10000 == (10000-50)-> io:format("gotMessageCounter~p\n",[GotMessageCounter]);
+                                                                              true -> ok
+                                                                            end;
         true -> ok
-    end;
-    true -> ok
-  end,msg_loop(GotMessageCounter+1,PidSender)
+      end,
+      msg_loop(GotMessageCounter+1,PidSender)
 end.
 %% zeroCounter -> msgAcc_loop(Pid_timing,PidPlotGraph,0,ListAcc);
 %% done -> io:format("got done") , PidPlotGraph!ListAcc
