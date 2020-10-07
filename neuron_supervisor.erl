@@ -324,7 +324,16 @@ fix17neurons(Nodes, Tids,EtsOwnerName,NeuronName2Pid_map) ->
   get(pid_msg)!zeroCounter,
   get(pid_data_sender)!wait,
   {NewNeuronName2Pid_map,PidOldPidNewTuples}=fix_resonator_17stage(fournodes, Nodes, Tids,NeuronName2Pid_map),
-  lists:foreach(fun({{Old,New},NodeName})->rpc:call(NodeName,ets_statem,callChangePid,[EtsOwnerName,Old,New]) end,lists:zip(PidOldPidNewTuples,Nodes)),
+  NeuronList=lists:seq(1,17),
+
+  lists:foreach(fun({{Old,New},NodeName})->rpc:call(NodeName,ets_statem,callChangePid,[EtsOwnerName,Old,New]) end,
+  lists:zip(PidOldPidNewTuples,lists:map(fun(X)-> case X of
+                                                             A when A == 1; A == 2;A == 3; A == 4-> lists:nth(3,Nodes);
+                                                             B when B == 5; B == 6;B == 7; B == 8-> lists:nth(1,Nodes);
+                                                             C when C == 9; C == 10;C == 11; C == 12-> lists:nth(2,Nodes);
+                                                             D when D == 13; D == 14;D == 15; D == 16; D == 17-> lists:nth(4,Nodes)
+end end, NeuronList))),
+
   neuron_statem:sendMessage(maps:get(afi11,NewNeuronName2Pid_map),maps:get(afi14,NewNeuronName2Pid_map),<<1>>,x),
   get(pid_data_sender)!{stopWait,maps:get(afi11,NewNeuronName2Pid_map)},
   NewNeuronName2Pid_map.
@@ -352,7 +361,9 @@ fix_resonator_4stage(fournodes, Nodes, Tids,NeuronName2Pid_mapOLD) ->
   io:format("~p",[Neurons]),
   io:format("1.1~n"),
 
-  NeuronName2Pid=lists:map(fun({Name, Record,Node}) -> {ok,Pid}=rpc:call(Node, neuron_statem, start, [{restore,Record,maps:get(Name,NeuronName2Pid_mapOLD)}]), {Name, Pid} end, Neurons),
+  NeuronName2Pid=lists:map(fun({Name, Record,Node}) ->
+    {ok,Pid}=rpc:call(Node, neuron_statem, start, [{restore,Record,maps:get(Name,NeuronName2Pid_mapOLD)}]),
+    {Name, Pid} end, Neurons),
   %list neuron name -> pid
   NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
   PidOldPidNewTuples = [{maps:get(X,NeuronName2Pid_mapOLD),maps:get(X,NeuronName2Pid_map)}||X <-maps:keys(NeuronName2Pid_map)],
@@ -371,6 +382,18 @@ fix_resonator_17stage(onenode, Node, Tid,NeuronName2Pid_mapOLD) ->
   NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
   PidOldPidNewTuples = [{maps:get(X,NeuronName2Pid_mapOLD),maps:get(X,NeuronName2Pid_map)}||X <-maps:keys(NeuronName2Pid_map)],
   pidConfig17(NeuronName2Pid_map),
+  {NeuronName2Pid_map,PidOldPidNewTuples};
+
+fix_resonator_17stage(fournodes, Nodes, Tids,NeuronName2Pid_mapOLD) ->
+  Neurons = get_17_neurons(Nodes, Tids),
+  NeuronName2Pid=lists:map(fun({Name, Record,Node}) ->
+    {ok,Pid}=rpc:call(Node, neuron_statem, start, [{restore,Record,maps:get(Name,NeuronName2Pid_mapOLD)}]),
+    {Name, Pid} end, Neurons),
+  %list neuron name -> pid
+  NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
+  PidOldPidNewTuples = [{maps:get(X,NeuronName2Pid_mapOLD),maps:get(X,NeuronName2Pid_map)}||X <-maps:keys(NeuronName2Pid_map)],
+  pidConfig17(NeuronName2Pid_map),
+  io:format("~n {NeuronName2Pid_map,PidOldPidNewTuples}:~p~n",[{NeuronName2Pid_map,PidOldPidNewTuples}]),
   {NeuronName2Pid_map,PidOldPidNewTuples}.
 
 
