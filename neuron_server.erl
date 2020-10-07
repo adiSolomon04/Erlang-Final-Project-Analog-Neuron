@@ -12,15 +12,15 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/0, test_networks/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
   code_change/3]).
 
--define(SERVER, ?MODULE).
+-define(SERVER, neuron_server).
 
--record(neuron_server_state, {}).
+-record(neuron_server_state, {supervisors=[]}).
 
 %%%===================================================================
 %%% API
@@ -30,13 +30,13 @@
 -spec(start_link() ->
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link() ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+  gen_server:start({local, ?SERVER}, ?MODULE, [], []).
 
-%% start_supervisor(ListLayerSize, InputFile)->
-%% spawn_monitor(neuron_supervisor, start/2, [ListLayerSize, InputFile]).
+launch_network(Node_Conc, Net_Size, Nodes, Frequency_Detect)->
+  handle_cast(?SERVER, {launch_network,[Node_Conc, Net_Size, Nodes, Frequency_Detect]}).
 
-
-%run_sys(Inputfile) edit input file and send to supervisor.
+test_networks(Freq={Freqstart, FreqStop}) ->
+  gen_server:cast(?SERVER, {test_network, Freq}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -48,7 +48,7 @@ start_link() ->
   {ok, State :: #neuron_server_state{}} | {ok, State :: #neuron_server_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init([]) ->
-
+  neuron_wx:start(),
   {ok, #neuron_server_state{}}.
 
 %% @private
@@ -61,8 +61,14 @@ init([]) ->
   {noreply, NewState :: #neuron_server_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #neuron_server_state{}} |
   {stop, Reason :: term(), NewState :: #neuron_server_state{}}).
-handle_call(_Request, _From, State = #neuron_server_state{}) ->
+handle_call(_Requset, _From, State = #neuron_server_state{supervisors = Supervisors}) ->
   {reply, ok, State}.
+
+gather([Pid|Pids]) ->
+  receive
+    {done_testing, Pid} -> gather(Pids)
+  end;
+gather([])-> done.
 
 %% @private
 %% @doc Handling cast messages
@@ -70,8 +76,15 @@ handle_call(_Request, _From, State = #neuron_server_state{}) ->
   {noreply, NewState :: #neuron_server_state{}} |
   {noreply, NewState :: #neuron_server_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #neuron_server_state{}}).
-handle_cast(_Request, State = #neuron_server_state{}) ->
-  {noreply, State}.
+handle_cast(Req={test_network, _}, State = #neuron_server_state{supervisors = Supervisors}) ->
+  lists:foreach(fun(Pid)-> Pid!Req end, Supervisors),
+  gather(Supervisors),
+  {noreply, State};
+handle_cast({launch_network,[Node_Conc, Net_Size, Nodes, Frequency_Detect]},
+    State = #neuron_server_state{supervisors = Supervisors}) ->
+  NewSupervisor  =neuron_supervisor:start(Node_Conc, Net_Size, Nodes, Frequency_Detect),
+  {noreply, State#neuron_server_state{supervisors = Supervisors++[NewSupervisor]}}.
+
 
 %% @private
 %% @doc Handling all non call/cast messages

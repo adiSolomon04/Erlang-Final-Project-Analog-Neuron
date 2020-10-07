@@ -5,7 +5,8 @@
 -export([start/0, handleButtonStart/2]).
 -include_lib("wx/include/wx.hrl").
 
--record(data_launch, {env, net_size, net_conc, text_nodes, text_freq}).
+-define(SERVER, neuron_server).
+-record(data_launch, {env, frame, net_size, net_conc, text_nodes, text_freq}).
 -record(data_rb_nodes, {atom, list_nodes}).
 
 %% Will get the pid of server
@@ -48,13 +49,14 @@ start() ->
 
   TextDetectFreq = wxStaticText:new(Frame, ?wxID_ANY, "Detect Frequency"),
   wxStaticText:setFont(TextDetectFreq, FontSubHeader),
-  TextCtrlFreqSelect = wxTextCtrl:new(Frame, ?wxID_ANY,  [{value, "104.2"}]),
-  ButtonLaunchNet = wxButton:new(Frame, ?wxID_ANY, [{label, "LAUNCH NETWORK"}]), %{style, ?wxBU_LEFT}
+  TextCtrlFreqDetect = wxTextCtrl:new(Frame, ?wxID_ANY,  [{value, "104.2"}]),
+  ButtonLaunchNet = wxButton:new(Frame, ?wxID_ANY, [{label, "LAUNCH NEW NETWORK"}]), %{style, ?wxBU_LEFT}
   LaunchRec = #data_launch{env=wx:get_env(),
+    frame = Frame,
     net_size= RBSize17,
     net_conc="not used yet",
     text_nodes="not used yet",
-    text_freq= TextCtrlFreqSelect},
+    text_freq= TextCtrlFreqDetect},
 
 
 
@@ -147,7 +149,7 @@ start() ->
 
   %% Configure
   lists:foreach(fun(X)-> wxSizer:add(MainSizerTopL, X, [{flag, ?wxALL}, {border, 4}]) end,
-    [TextConfiguration, TextNetType, BoxRBSize,TextNetNodes, BoxRBNode,TextNodes, BoxNodes1, BoxNodes2, TextDetectFreq, TextCtrlFreqSelect]),
+    [TextConfiguration, TextNetType, BoxRBSize,TextNetNodes, BoxRBNode,TextNodes, BoxNodes1, BoxNodes2, TextDetectFreq, TextCtrlFreqDetect]),
   wxSizer:add(MainSizerTopL, ButtonLaunchNet, [{flag, ?wxALL bor ?wxEXPAND}, {border, 4}]),
   wxSizer:addSpacer(MainSizerTopL, 10),
   %% Test
@@ -167,6 +169,7 @@ start() ->
   %wxWindow:setSize(Frame, 418, 547),
   %%Show Frame
   wxFrame:show(Frame).
+  %wxFrame:destroy(Frame). todo? add exit and terminate all processes?
   %wxSizer:fitInside(MainSizerR, Panel).
 
 
@@ -186,21 +189,18 @@ panelPictureUpdate({Frame,PictureDraw}, #wx{obj =Panel} ) ->
   wxWindow:updateWindowUI(Frame),
   ok.
 
-
 handleLaunchNet(WxData, _) ->
   LaunchRec=WxData#wx.userData,
-
-  Freq = wxTextCtrl:getValue(LaunchRec#data_launch.text_freq),
-  case is_number(Freq) of
-    false -> throw_err_and_exit; %% message box with error and exit this func.
-    true -> Nodes = wxTextCtrl:getValue(LaunchRec#data_launch.text_nodes)
-      %% check if all alive. if do - continue and run the program.
-  end,
-
   RB17= LaunchRec#data_launch.net_size,
-  case wxRadioButton:getValue(RB17) of
-    false -> supervisor_with_neuron_4;
-    true -> supervisor_neuron_17
+  Net_Size = case wxRadioButton:getValue(RB17) of
+               false -> 4;
+               true -> 17
+             end,
+  FreqDetect = wxTextCtrl:getValue(LaunchRec#data_launch.text_freq),
+  case is_number(FreqDetect) of
+    false -> wxMessageDialog:showModal(wxMessageDialog:new(LaunchRec#data_launch.frame, "Frequency Detect is not a number!")); %% message box with error and exit this func.
+    true -> Nodes = wxTextCtrl:getValue(LaunchRec#data_launch.text_nodes)
+    %% check if all alive. if do - continue and run the program.
   end.
 
 handleRBNodes(#wx{userData = Record}, _) ->

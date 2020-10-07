@@ -9,7 +9,7 @@
 -module(neuron_supervisor).
 -author("adisolo").
 -compile(export_all).
--export([]).
+-export([start/4]).
 
   %% record for neuron init.
 -record(neuron_statem_state, {etsTid, actTypePar=identity,weightPar,biasPar=0,leakageFactorPar=5,leakagePeriodPar=73,pidIn=[],pidOut=[]}).
@@ -22,11 +22,16 @@ start_shell()->
   case whereis(shell) of
     undefined -> register(shell, self())
   end,
-  spawn(fun()->neuron_supervisor:start(four_nodes, 17, 200)end). %%104.649
+  Pid = neuron_supervisor:start(four_nodes, 17, nothing, 200), %%104.649
+  Pid!{test_network,{195, 200}}.
+
+
+start(Node_Conc, Net_Size, Nodes, Frequency_Detect)->
+  spawn(fun()->neuron_supervisor:init(Node_Conc, Net_Size, Nodes, Frequency_Detect)end).
 
 
 %%% Node_Conc is single_node / four_nodes
-start(Node_Conc, Net_Size,  Frequency_Detect)->
+init(Node_Conc, Net_Size, _, Frequency_Detect)->
   %Set as a system process
   process_flag(trap_exit, true),
   %% Open an ets heir and holders process in every Node
@@ -35,6 +40,7 @@ start(Node_Conc, Net_Size,  Frequency_Detect)->
   %% ====================
   %% INPUTS
   %% ====================
+  put(freq_detect, Frequency_Detect),
   put(start_freq, StartFreq=195),
   put(stop_freq, StopFreq=205),
   put(net_size, Net_Size),
@@ -85,13 +91,12 @@ start(Node_Conc, Net_Size,  Frequency_Detect)->
   %% ====================
   %% Build Net
   %% ====================
-  put(freq_detect, Frequency_Detect),% todo: change freq.
   NeuronName2Pid_map = case Net_Size of
                          4  -> neuron_supervisor:start4neurons(Node_Conc, Nodes, Tids);
                          17 -> neuron_supervisor:start17neurons(Node_Conc, Nodes, Tids)
                        end,
-  Samp = pcm_handler:create_wave_list(StartFreq,StopFreq,1),
-  PidSender!{test_network, Samp},
+  %Samp = pcm_handler:create_wave_list(StartFreq,StopFreq,1),
+  %PidSender!{test_network, Samp},
 
   %% ====================
   put(pdm_msg_number,0),
