@@ -20,7 +20,7 @@
 
 -define(SERVER, neuron_server).
 
--record(neuron_server_state, {supervisors_four_nodes=[], supervisors_single_node=#{}, env}).
+-record(neuron_server_state, { supervisors_map=#{'adi@192.168.10.131'=>[],'eran@192.168.10.131'=>[],'emm@192.168.10.131'=>[],'yuda@192.168.10.131'=>[]}, env}).
 
 %%%===================================================================
 %%% API
@@ -78,23 +78,40 @@ handle_call(_Requset, _From, State = #neuron_server_state{}) ->
   {stop, Reason :: term(), NewState :: #neuron_server_state{}}).
 
 handle_cast({launch_network,[single_node, Net_Size, [Node], Frequency_Detect]},
-    State = #neuron_server_state{supervisors_single_node = Map}) ->
+    State = #neuron_server_state{supervisors_map = Map}) ->
   io:format("here cast1~n"),
   NewSupervisor=neuron_supervisor:start(single_node, Net_Size, [Node], Frequency_Detect),
   %NewSupervisor!{test_network,{195, 200}},
   NewMap= case maps:find(Node, Map) of
-            error -> Map#{Node => [NewSupervisor]};
+            error ->monitor_node(Node, true), Map#{Node => [NewSupervisor]};
             {ok, List} -> Map#{Node => List++[NewSupervisor]}
           end,
   io:format("here cast2~n"),
-  {noreply, State#neuron_server_state{supervisors_single_node = NewMap}};
+  {noreply, State#neuron_server_state{supervisors_map = NewMap}};
 handle_cast({launch_network,[four_nodes, Net_Size, Nodes, Frequency_Detect]},
-    State = #neuron_server_state{supervisors_four_nodes = Supervisors}) ->
+    State = #neuron_server_state{supervisors_map = Map}) ->
   io:format("here cast1 four~n"),
   NewSupervisor=neuron_supervisor:start(four_nodes, Net_Size, Nodes, Frequency_Detect),
-  {noreply, State#neuron_server_state{supervisors_four_nodes = Supervisors++[NewSupervisor]}};
-handle_cast(Req={test_network, _}, State = #neuron_server_state{supervisors_four_nodes = List, supervisors_single_node = Map}) ->
-  Supervisors = List ++ lists:flatten(maps:values(Map)),
+  [Node1,Node2,Node3,Node4]=maps:keys(Map),
+  NewMap1= case maps:find(Node1, Map) of
+            error ->monitor_node(Node1, true), Map#{Node1 => [NewSupervisor]};
+            {ok, List} -> Map#{Node1 => List++[NewSupervisor]}
+          end,
+  NewMap2= case maps:find(Node2, NewMap1) of
+            error ->monitor_node(Node2, true), Map#{Node2 => [NewSupervisor]};
+            {ok, List} -> NewMap1#{Node2 => List++[NewSupervisor]}
+          end,
+  NewMap3= case maps:find(Node3, NewMap2) of
+            error ->monitor_node(Node3, true), Map#{Node3 => [NewSupervisor]};
+            {ok, List} -> NewMap2#{Node3 => List++[NewSupervisor]}
+          end,
+  NewMap4= case maps:find(Node4, NewMap3) of
+            error ->monitor_node(Node4, true), Map#{Node4 => [NewSupervisor]};
+            {ok, List} -> NewMap3#{Node4 => List++[NewSupervisor]}
+          end,
+  {noreply, State#neuron_server_state{supervisors_map = NewMap4}};
+handle_cast(Req={test_network, _}, State = #neuron_server_state{supervisors_map = Map}) ->
+  Supervisors =  lists:flatten(maps:values(Map)),
   lists:foreach(fun(Pid)-> Pid!Req end, Supervisors),
   %%gather(Supervisors), %todo: supervisor sends a message with {done_testing, Pid}
   {noreply, State};
@@ -109,8 +126,18 @@ handle_cast({env,Env}, State)->
   {noreply, NewState :: #neuron_server_state{}} |
   {noreply, NewState :: #neuron_server_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #neuron_server_state{}}).
-handle_info(_Info, State = #neuron_server_state{}) ->
-  {noreply, State}.
+handle_info({nodedown, Node}, State = #neuron_server_state{supervisors_map = Map}) ->
+  [Node1,Node2,Node3,Node4]=maps:keys(Map),
+  List1=maps:get(Node1,Map),
+  List2=maps:get(Node2,Map),
+  List3=maps:get(Node3,Map),
+  List4=maps:get(Node4,Map),
+  case Node of
+    Node1 -> List2New=List2--List1,List3New=List3--List1,List4New=List4--List1,NewMap=Map#{Node1=>[],Node2=>List2New,Node3=>List3New,Node4=>List4New},Message='Node 1 Down';
+    Node2 -> List1New=List1--List2,List3New=List3--List2,List4New=List4--List2,NewMap=Map#{Node1=>List1New,Node2=>[],Node3=>List3New,Node4=>List4New},Message='Node 2 Down';
+    Node3 -> List1New=List1--List3,List2New=List2--List3,List4New=List4--List3,NewMap=Map#{Node1=>List1New,Node2=>List2New,Node3=>[],Node4=>List4New},Message='Node 3 Down';
+    Node4 -> List1New=List1--List4,List2New=List2--List4,List3New=List3--List4,NewMap=Map#{Node1=>List1New,Node2=>List2New,Node3=>List3New,Node4=>[]},Message='Node 4 Down'
+end,{noreply, State#neuron_server_state{supervisors_map = NewMap}}.
 
 %% @private
 %% @doc This function is called by a gen_server when it is about to
