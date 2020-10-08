@@ -23,7 +23,7 @@ start_shell()->
     undefined -> register(shell, self());
     X -> ok
   end,
-  spawn(fun()->neuron_supervisor:start(four_nodes, 4, 104.649)end). %%104.649
+  spawn(fun()->neuron_supervisor:start(four_nodes, 17, 200)end). %%104.649
 
 
 %%% Node_Conc is single_node / four_nodes
@@ -36,11 +36,11 @@ start(Node_Conc, Net_Size,  Frequency_Detect)->
   %% ====================
   %% INPUTS
   %% ====================
-  put(start_freq, StartFreq=100),
-  put(stop_freq, StopFreq=110),
+  put(start_freq, StartFreq=195),
+  put(stop_freq, StopFreq=205),
   put(net_size, Net_Size),
   Nodes = case Node_Conc of
-            four_nodes -> [node(),'eran@192.168.1.151','emm@192.168.1.151','yuda@192.168.1.151'];
+            four_nodes -> [node(),'eran@192.168.10.131','emm@192.168.10.131','yuda@192.168.10.131'];
             single_node -> [node()]
           end,
   %% ====================
@@ -281,7 +281,13 @@ start_resonator_17stage(single_node, [Node], [Tid]) ->
   pidConfig17(NeuronName2Pid_map),
   NeuronName2Pid_map;
 start_resonator_17stage(four_nodes, Nodes, Tids) ->
-  do. %% todo.
+  Neurons = get_17_neurons(Nodes, Tids),
+  NeuronName2Pid=lists:map(fun({Name, Record, Node}) ->
+  {ok,Pid}=rpc:call(Node, neuron_statem, start, [Record]), {Name, Pid} end, Neurons),
+  NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
+  pidConfig17(NeuronName2Pid_map),
+  NeuronName2Pid_map.
+
 
 %%%===================================================================
 %%%  Fix Network
@@ -320,7 +326,16 @@ fix17neurons(Nodes, Tids,MapNodesToPidOwners,NeuronName2Pid_map) ->
   get(pid_msg)!zeroCounter,
   get(pid_data_sender)!wait,
   {NewNeuronName2Pid_map,PidOldPidNewTuples}=fix_resonator_17stage(fournodes, Nodes, Tids,NeuronName2Pid_map),
-  lists:foreach(fun({{Old,New},NodeName})->rpc:call(NodeName,ets_statem,callChangePid,[maps:get(NodeName,MapNodesToPidOwners),Old,New]) end,lists:zip(PidOldPidNewTuples,Nodes)),
+  NeuronList=lists:seq(1,17),
+
+  lists:foreach(fun({{Old,New},NodeName})->rpc:call(NodeName,ets_statem,callChangePid,[maps:get(NodeName,MapNodesToPidOwners),Old,New]) end,
+  lists:zip(PidOldPidNewTuples,lists:map(fun(X)-> case X of
+                                                             A when A == 1; A == 2;A == 3; A == 4-> lists:nth(3,Nodes);
+                                                             B when B == 5; B == 6;B == 7; B == 8-> lists:nth(1,Nodes);
+                                                             C when C == 9; C == 10;C == 11; C == 12-> lists:nth(2,Nodes);
+                                                             D when D == 13; D == 14;D == 15; D == 16; D == 17-> lists:nth(4,Nodes)
+end end, NeuronList))),
+
   neuron_statem:sendMessage(maps:get(afi11,NewNeuronName2Pid_map),maps:get(afi14,NewNeuronName2Pid_map),<<1>>,x),
   get(pid_data_sender)!{stopWait,maps:get(afi11,NewNeuronName2Pid_map)},
   NewNeuronName2Pid_map.
@@ -348,7 +363,9 @@ fix_resonator_4stage(fournodes, Nodes, Tids,NeuronName2Pid_mapOLD) ->
   io:format("~p",[Neurons]),
   io:format("1.1~n"),
 
-  NeuronName2Pid=lists:map(fun({Name, Record,Node}) -> {ok,Pid}=rpc:call(Node, neuron_statem, start, [{restore,Record,maps:get(Name,NeuronName2Pid_mapOLD)}]), {Name, Pid} end, Neurons),
+  NeuronName2Pid=lists:map(fun({Name, Record,Node}) ->
+    {ok,Pid}=rpc:call(Node, neuron_statem, start, [{restore,Record,maps:get(Name,NeuronName2Pid_mapOLD)}]),
+    {Name, Pid} end, Neurons),
   %list neuron name -> pid
   NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
   PidOldPidNewTuples = [{maps:get(X,NeuronName2Pid_mapOLD),maps:get(X,NeuronName2Pid_map)}||X <-maps:keys(NeuronName2Pid_map)],
@@ -367,6 +384,18 @@ fix_resonator_17stage(onenode, Node, Tid,NeuronName2Pid_mapOLD) ->
   NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
   PidOldPidNewTuples = [{maps:get(X,NeuronName2Pid_mapOLD),maps:get(X,NeuronName2Pid_map)}||X <-maps:keys(NeuronName2Pid_map)],
   pidConfig17(NeuronName2Pid_map),
+  {NeuronName2Pid_map,PidOldPidNewTuples};
+
+fix_resonator_17stage(fournodes, Nodes, Tids,NeuronName2Pid_mapOLD) ->
+  Neurons = get_17_neurons(Nodes, Tids),
+  NeuronName2Pid=lists:map(fun({Name, Record,Node}) ->
+    {ok,Pid}=rpc:call(Node, neuron_statem, start, [{restore,Record,maps:get(Name,NeuronName2Pid_mapOLD)}]),
+    {Name, Pid} end, Neurons),
+  %list neuron name -> pid
+  NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
+  PidOldPidNewTuples = [{maps:get(X,NeuronName2Pid_mapOLD),maps:get(X,NeuronName2Pid_map)}||X <-maps:keys(NeuronName2Pid_map)],
+  pidConfig17(NeuronName2Pid_map),
+  io:format("~n {NeuronName2Pid_map,PidOldPidNewTuples}:~p~n",[{NeuronName2Pid_map,PidOldPidNewTuples}]),
   {NeuronName2Pid_map,PidOldPidNewTuples}.
 
 
@@ -395,14 +424,18 @@ get_4_neurons([Node1, Node2, Node3, Node4], [Tid1, Tid2, Tid3, Tid4])->
    {afi23, #neuron_statem_state{etsTid=Tid4,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}, Node4}].
 
 get_17_neurons(_,[Tid])->
-  [{afi11, #neuron_statem_state{etsTid=Tid,weightPar=[11,-9], biasPar=-1}},
-    {afi12, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-    {afi13, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-    {afi14, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-    {afi21, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-    {afi22, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-    {afi23, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-    {afi24, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
+  Frequency_Detect=get(freq), LF = 5,
+  LP =round((1.0)*(1.536*math:pow(10,6))/(Frequency_Detect*math:pow(2,LF)*2*math:pi())),
+  Gain=math:pow(2,(2*LF-3))*(1+LP),
+  Factor_Gain=(1.0)*9472/Gain,
+  [{afi11, #neuron_statem_state{etsTid=Tid,weightPar=[11*Factor_Gain,-9*Factor_Gain], biasPar=-1*Factor_Gain, leakagePeriodPar = LP}},
+    {afi12, #neuron_statem_state{etsTid=Tid,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}},
+    {afi13, #neuron_statem_state{etsTid=Tid,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}},
+    {afi14, #neuron_statem_state{etsTid=Tid,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}},
+    {afi21, #neuron_statem_state{etsTid=Tid,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}},
+    {afi22, #neuron_statem_state{etsTid=Tid,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}},
+    {afi23, #neuron_statem_state{etsTid=Tid,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}},
+    {afi24, #neuron_statem_state{etsTid=Tid,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}},
     {afb1, #neuron_statem_state{etsTid=Tid, actTypePar = binaryStep, weightPar=[10], biasPar=-5}},
     {afb2, #neuron_statem_state{etsTid=Tid, actTypePar = binaryStep, weightPar=[10], biasPar=-5}},
     {afb3, #neuron_statem_state{etsTid=Tid, actTypePar = binaryStep, weightPar=[10], biasPar=-5}},
@@ -414,25 +447,27 @@ get_17_neurons(_,[Tid])->
     {sum, #neuron_statem_state{etsTid=Tid,weightPar=[6,6,6,6], biasPar=-12, leakagePeriodPar = 500}}];
 
 get_17_neurons([Node1, Node2, Node3, Node4], [Tid1, Tid2, Tid3, Tid4])->
-  %% todo: Continue,
-  %% todo: add later freq changing.
-  [{afi11, #neuron_statem_state{etsTid=Tid1,weightPar=[11,-9], biasPar=-1}, Node1},
-    {afi12, #neuron_statem_state{etsTid=Tid1,weightPar=[10], biasPar=-5}, Node1},
-    {afi13, #neuron_statem_state{etsTid=Tid1,weightPar=[10], biasPar=-5}, Node1},
-    {afi14, #neuron_statem_state{etsTid=Tid1,weightPar=[10], biasPar=-5}},
-    {afi21, #neuron_statem_state{etsTid=Tid2,weightPar=[10], biasPar=-5}},
-    {afi22, #neuron_statem_state{etsTid=Tid2,weightPar=[10], biasPar=-5}},
-    {afi23, #neuron_statem_state{etsTid=Tid2,weightPar=[10], biasPar=-5}},
-    {afi24, #neuron_statem_state{etsTid=Tid2,weightPar=[10], biasPar=-5}},
-    {afb1, #neuron_statem_state{etsTid=Tid3, actTypePar = binaryStep, weightPar=[10], biasPar=-5}},
-    {afb2, #neuron_statem_state{etsTid=Tid3, actTypePar = binaryStep, weightPar=[10], biasPar=-5}},
-    {afb3, #neuron_statem_state{etsTid=Tid3, actTypePar = binaryStep, weightPar=[10], biasPar=-5}},
-    {afb4, #neuron_statem_state{etsTid=Tid3, actTypePar = binaryStep, weightPar=[10], biasPar=-5}},
-    {afi31, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5}},
-    {afi32, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5}},
-    {afi33, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5}},
-    {afi34, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5}},
-    {sum, #neuron_statem_state{etsTid=Tid4,weightPar=[6,6,6,6], biasPar=-12, leakagePeriodPar = 500}}].
+  Frequency_Detect=get(freq), LF = 5,
+  LP =round((1.0)*(1.536*math:pow(10,6))/(Frequency_Detect*math:pow(2,LF)*2*math:pi())),
+  Gain=math:pow(2,(2*LF-3))*(1+LP),
+  Factor_Gain=(1.0)*9472/Gain,
+  [{afi11, #neuron_statem_state{etsTid=Tid1,weightPar=[11*Factor_Gain,-9*Factor_Gain], biasPar=-1*Factor_Gain, leakagePeriodPar = LP}, Node1},
+    {afi12, #neuron_statem_state{etsTid=Tid1,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}, Node1},
+    {afi13, #neuron_statem_state{etsTid=Tid1,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP}, Node1},
+    {afi14, #neuron_statem_state{etsTid=Tid1,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP},Node1},
+    {afi21, #neuron_statem_state{etsTid=Tid2,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP},Node2},
+    {afi22, #neuron_statem_state{etsTid=Tid2,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP},Node2},
+    {afi23, #neuron_statem_state{etsTid=Tid2,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP},Node2},
+    {afi24, #neuron_statem_state{etsTid=Tid2,weightPar=[10*Factor_Gain], biasPar=-5*Factor_Gain, leakagePeriodPar = LP},Node2},
+    {afb1, #neuron_statem_state{etsTid=Tid3, actTypePar = binaryStep, weightPar=[10], biasPar=-5},Node3},
+    {afb2, #neuron_statem_state{etsTid=Tid3, actTypePar = binaryStep, weightPar=[10], biasPar=-5},Node3},
+    {afb3, #neuron_statem_state{etsTid=Tid3, actTypePar = binaryStep, weightPar=[10], biasPar=-5},Node3},
+    {afb4, #neuron_statem_state{etsTid=Tid3, actTypePar = binaryStep, weightPar=[10], biasPar=-5},Node3},
+    {afi31, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5},Node4},
+    {afi32, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5},Node4},
+    {afi33, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5},Node4},
+    {afi34, #neuron_statem_state{etsTid=Tid4,weightPar=[10], biasPar=-5},Node4},
+    {sum, #neuron_statem_state{etsTid=Tid4,weightPar=[6,6,6,6], biasPar=-12, leakagePeriodPar = 500},Node4}].
 
 pidConfig4(NeuronName2Pid_map)->
   %%%% using pid only
@@ -524,9 +559,7 @@ tryTwoNodes(Node1,Node2,Tid)->
 
 
 open_ets_satatem(Pid_Server,NodeName)->
-  A =  rpc:call(NodeName,ets_statem,start,[Pid_Server,backup,none]),
-io:format("~p print A : ~p~n",[NodeName,A] ),
-  {ok,PidBackup} = A,
+  {ok,PidBackup} = rpc:call(NodeName,ets_statem,start,[Pid_Server,backup,none]),
   erlang:monitor(process,PidBackup),
   {ok,PidEtsOwner} =  rpc:call(NodeName,ets_statem,start,[Pid_Server,etsOwner,PidBackup]),
   erlang:monitor(process,PidEtsOwner),
