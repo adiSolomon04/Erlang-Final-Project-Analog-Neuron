@@ -12,7 +12,7 @@
 -behaviour(gen_statem).
 
 %% API
--export([start/4, callChangePid/3, callChangeHeir/2]).
+-export([start/3, callChangePid/3, callChangeHeir/2]).
 
 %% gen_statem callbacks
 -export([init/1, format_status/2, handle_event/4, terminate/3,
@@ -37,8 +37,8 @@
 %%                                   (the pid of the process that will get the table if the process falls)
 %% @returns:  {ok,MyPid}
 %% @sendMessage: if StartState =:= etsOwner -> send {{node(),self()},Tid}
-start(Name_ets_statem, Pid_Server, StartState, PidHeir) ->
-  gen_statem:start({local, Name_ets_statem}, ?MODULE, [Pid_Server,Name_ets_statem,StartState,PidHeir], []).
+start(Pid_Server, StartState, PidHeir) ->
+  gen_statem:start(?MODULE, [Pid_Server,StartState,PidHeir], []).
 
 %% callChangePid
 %% @param:    Name_ets_statem the name of the statem (the name it will registered)
@@ -69,22 +69,22 @@ callChangeHeir(Name_ets_statem, Heir) ->
 %% @param:    the pid of the calling process
 %%            StartState = backup
 %%            PidHeir -none
-init([Pid_Server,Name_ets_statem,backup,none]) ->
+init([Pid_Server,backup,none]) ->
   S = self(),
   io:format("here1 ~p" ,[S]),
-  {ok, backupState, Name_ets_statem};
+  {ok, backupState, x};
 
 %% calls from start_link
 %% @param:    the pid of the calling process
 %%            StartState = etsOwner according to this parameter
 %%            PidHeir - etsOwner -> the Heir pid (the pid of the process that will get the table if the process falls)
 %% @sendMessage: if StartState =:= etsOwner -> send {{node(),self()},Tid}
-init([Pid_Server,Name_ets_statem,etsOwner,PidHeir]) ->
+init([Pid_Server,etsOwner,PidHeir]) ->
   %%todo: maybe need read/write_concurrency???
-  Tid = ets:new(neurons_data,[set,public,{heir,PidHeir,Name_ets_statem}]),
+  Tid = ets:new(neurons_data,[set,public,{heir,PidHeir,x}]),
   MyPlace = {node(),self()},
   Pid_Server!{MyPlace,Tid}, %% send the Tid back to the server
-  {ok, etsOwnerState, {Tid,Name_ets_statem}}.
+  {ok, etsOwnerState, Tid}.
 
 %% @private
 %% @doc This function is called by a gen_statem when it needs to find out
@@ -111,25 +111,25 @@ format_status(_Opt, [_PDict, _StateName, _State]) ->
 %%            {changePid,{OldPid,NewPid}} = the Pid of the falling neuron and the new one
 %%            Tid - the state
 %% @sendMessage: replay {MyPlace,{updatePid,NewPid}}
-etsOwnerState({call,Pid_Server}, {changePid,{OldPid,NewPid}},{Tid,Name_ets_statem}) ->
+etsOwnerState({call,Pid_Server}, {changePid,{OldPid,NewPid}},Tid) ->
   [{OldPid,NeuronData}]=ets:take(Tid,OldPid),
   ets:insert_new(Tid,{NewPid,NeuronData}),
   MyPlace = {node(),self()},
   Reply = [{reply,Pid_Server,{MyPlace,{updatePid,NewPid}}}],
   NextStateName = etsOwnerState,
-  {next_state, NextStateName,{Tid,Name_ets_statem},Reply};
+  {next_state, NextStateName,Tid,Reply};
 
 %% calls from callChangeHeir
 %% @param:    {call,Pid_Server} - the pid of the calling process
 %%            changeHeir,{Heir}} = the Pid of the heir to update in the Tid option
 %%            Tid - the state
 %% @sendMessage: replay {MyPlace,{changedHeir,Heir}}
-etsOwnerState({call,Pid_Server}, {changeHeir,{Heir}},{Tid,Name_ets_statem}) ->
-  ets:setopts(Tid,{heir, Heir, Name_ets_statem}),
+etsOwnerState({call,Pid_Server}, {changeHeir,{Heir}},Tid) ->
+  ets:setopts(Tid,{heir, Heir, x}),
   MyPlace = {node(),self()},
   Reply= [{reply,Pid_Server,{MyPlace,{changedHeir,Heir}}}],
   NextStateName = etsOwnerState,
-  {next_state, NextStateName,{Tid,Name_ets_statem}, Reply}.
+  {next_state, NextStateName,Tid, Reply}.
 
 
 %% calls when the ets owner process falls, take the charge of the ets
@@ -137,15 +137,11 @@ etsOwnerState({call,Pid_Server}, {changeHeir,{Heir}},{Tid,Name_ets_statem}) ->
 %%            {'ETS-TRANSFER',Tid,_,_} - the message that the ets process fell and the Tid
 %% @next_state: etsOwnerState
 %% need to update the Heir of the Tid and open new backup process
-backupState(info, {'ETS-TRANSFER',Tid,_,HeirData}, Name_ets_statem) ->
-  {registered_name,OldName}=process_info(self(),registered_name ),
-  io:format("registered_name ~p~n",[OldName]),
-  unregister(OldName),
-  register(HeirData,self()),
+backupState(info, {'ETS-TRANSFER',Tid,_,HeirData}, x) ->
   %global:unregister_name(Name_ets_statem),
   %global:register_name(HeirData,self()),
   NextStateName = etsOwnerState,
-  {next_state, NextStateName, {Tid,HeirData}}.
+  {next_state, NextStateName, Tid}.
 
 %% @private
 %% @doc If callback_mode is handle_event_function, then whenever a

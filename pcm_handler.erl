@@ -87,8 +87,8 @@ foreachMessageSendToFirstNeuron([Head|Tail],Rand_gauss_var,SendingRateCounter,Se
     %% send message number to supervisor
     true -> ok
   end,
-   if SendingRateCounter rem 1000 == 0, SendingRateCounter =/= 0-> nothing_yet;
-     %%get(supervisor)!{from_pdm, 1000};
+   if SendingRateCounter rem 500 == 0, SendingRateCounter =/= 0-> get(supervisor)!{from_pdm, 500};%%nothing_yet;
+
      true -> ok
   end,
   {NewNeuronPid,NewRand_gauss_var,ToCountinueCount} = sendToFirstNeuron(Head,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid),
@@ -126,7 +126,11 @@ sendToFirstNeuron(Acc,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid) 
       S=self(),
       neuron_statem:sendMessage(NewNeuronPid,S,Bit, x),
       {NewNeuronPid,NewRand_gauss_var,0};
-    {supervisor, NewSupervisor}-> put(supervisor, NewSupervisor)
+    {supervisor, NewSupervisor}-> put(supervisor, NewSupervisor),
+      NewNeuronPid= NeuronPid,
+      S=self(),
+      neuron_statem:sendMessage(NeuronPid,S,Bit, x),
+      {NewNeuronPid,NewRand_gauss_var,continue}
     after 0 ->
     if
       SendingRateCounter rem SendingRate == 0 -> timer:sleep(1);
