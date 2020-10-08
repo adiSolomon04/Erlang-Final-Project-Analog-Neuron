@@ -9,7 +9,7 @@
 -module(neuron_supervisor).
 -author("adisolo").
 -compile(export_all).
--export([]).
+-export([start/4]).
 
   %% record for neuron init.
 -record(neuron_statem_state, {etsTid, actTypePar=identity,weightPar,biasPar=0,leakageFactorPar=5,leakagePeriodPar=73,pidIn=[],pidOut=[]}).
@@ -23,11 +23,16 @@ start_shell()->
     undefined -> register(shell, self());
     _ -> ok
   end,
-  spawn(fun()->neuron_supervisor:start(single_node, 17, 200)end). %%104.649
+  Pid = neuron_supervisor:start(four_nodes, 17, nothing, 200), %%104.649
+  Pid!{test_network,{195, 200}}.
+
+
+start(Node_Conc, Net_Size, Nodes, Frequency_Detect)->
+  spawn(fun()->neuron_supervisor:init(Node_Conc, Net_Size, Nodes, Frequency_Detect)end).
 
 
 %%% Node_Conc is single_node / four_nodes
-start(Node_Conc, Net_Size,  Frequency_Detect)->
+init(Node_Conc, Net_Size, _, Frequency_Detect)->
   %Set as a system process
   process_flag(trap_exit, true),
   %% Open an ets heir and holders process in every Node
@@ -36,11 +41,12 @@ start(Node_Conc, Net_Size,  Frequency_Detect)->
   %% ====================
   %% INPUTS
   %% ====================
-  put(start_freq, StartFreq=200),
-  put(stop_freq, StopFreq=201),
+  put(freq_detect, Frequency_Detect),
+  %put(start_freq, StartFreq=195),
+  %put(stop_freq, StopFreq=205),
   put(net_size, Net_Size),
   Nodes = case Node_Conc of
-            four_nodes -> [node(),'eran@192.168.1.151','emm@192.168.1.151','yuda@192.168.1.151'];
+            four_nodes -> [node(),'eran@192.168.10.131','emm@192.168.10.131','yuda@192.168.10.131'];
             single_node -> [node()]
           end,
   %% ====================
@@ -59,7 +65,7 @@ start(Node_Conc, Net_Size,  Frequency_Detect)->
   erlang:monitor(process,PidSender),
   put(pid_data_sender, PidSender),
   %% plot
-  PidPlotGraph = spawn(python_comm,plot_graph_process,[append_acc_vs_freq,plot_acc_vs_freq_global,[StartFreq]]),
+  PidPlotGraph = spawn(python_comm,plot_graph_process,[append_acc_vs_freq,plot_acc_vs_freq_global,[0]]), %% todo:add startFreq to global in python
   erlang:monitor(process,PidPlotGraph),
   put(pid_plot_graph, PidPlotGraph),
   %% timing
@@ -85,13 +91,12 @@ start(Node_Conc, Net_Size,  Frequency_Detect)->
   %% ====================
   %% Build Net
   %% ====================
-  put(freq_detect, Frequency_Detect),
   NeuronName2Pid_map = case Net_Size of
                          4  -> neuron_supervisor:start4neurons(Node_Conc, Nodes, Tids);
                          17 -> neuron_supervisor:start17neurons(Node_Conc, Nodes, Tids)
                        end,
-  Samp = pcm_handler:create_wave_list(StartFreq,StopFreq,1),
-  PidSender!{test_network, Samp},
+  %Samp = pcm_handler:create_wave_list(StartFreq,StopFreq,1),
+  %PidSender!{test_network, Samp},
 
   %% ====================
   put(pdm_msg_number,0),
@@ -104,7 +109,7 @@ start(Node_Conc, Net_Size,  Frequency_Detect)->
     {pidAcc,PidAcc},{neuronName2Pid_map,NeuronName2Pid_map},{linkedPid,LinkedPid},
     {nodes,Nodes}, {tids,Tids},{mapNodesToPidOwnersNew,MapNodesToPidOwners},
     {openEts,OpenEts},{netSize, Net_Size},{pidMsg,PidMsg},{node_Conc,Node_Conc}, {frequency_Detect,Frequency_Detect},
-    {pdm_msg_number,0},{start_freq, StartFreq},{stop_freq, StopFreq}]),
+    {pdm_msg_number,0},%{start_freq, StartFreq},{stop_freq, StopFreq}]),
   supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts,HeirEts,HeirPid).
 
 supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts,HeirEts,HeirPid)->
@@ -204,6 +209,8 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,Lin
       supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts, HeirEts,HeirPid);
 
     {test_network,{StartFreq, StopFreq}}->
+      %%todo:add startFreq to global in python. call from here.
+      ets:insert(HeirEts,{freq, {StartFreq,StopFreq}}),
       put(start_freq, StartFreq),
       put(stop_freq, StopFreq),
       PidSender!{test_network, pcm_handler:create_wave_list(StartFreq,StopFreq,1)},
@@ -228,6 +235,7 @@ protectionPid()->
       [{mapNodesToPidOwnersNew,MapNodesToPidOwnersNew}]=ets:lookup(HeirEts,mapNodesToPidOwnersNew),[{openEts,OpenEts}]=ets:lookup(HeirEts,openEts),
       [{netSize,Net_Size}]=ets:lookup(HeirEts,netSize), [{pdm_msg_number,Pdm_msg_number}] = ets:lookup(HeirEts,pdm_msg_number),
       [{start_freq, StartFreq}] = ets:lookup(HeirEts,start_freq), [{stop_freq, StopFreq}] =  ets:lookup(HeirEts,stop_freq),
+      %todo: what if not set yet? set only in {test_network,{}}
       [{frequency_Detect,Frequency_Detect}] = ets:lookup(HeirEts,frequency_Detect),
       put(pdm_msg_number,Pdm_msg_number),
 
@@ -259,7 +267,6 @@ protectionPid()->
       erlang:monitor(process,PidAcc),
       ListPid = maps:values(NeuronName2Pid_map),
       {NewLinkedPid,_} = spawn_monitor(fun()->lists:foreach(fun(X)->link(X)end,ListPid), receive Y->Y end end),
-
       io:format("4.~n"),
       ets:setopts(HeirEts,{heir, HeirPid, 'SupervisorDown'}),
       supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,NewLinkedPid,Nodes,Tids,MapNodesToPidOwnersNew,OpenEts,HeirEts,HeirPid)

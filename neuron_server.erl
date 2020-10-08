@@ -12,31 +12,37 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/0, test_networks/1, wx_env/1, launch_network/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
   code_change/3]).
 
--define(SERVER, ?MODULE).
+-define(SERVER, neuron_server).
 
--record(neuron_server_state, {}).
+-record(neuron_server_state, {supervisors_four_nodes=[], supervisors_single_node=#{}, env}).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
-
+%% neuron_server:start_link().
 %% @doc Spawns the server and registers the local name (unique)
 -spec(start_link() ->
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link() ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+  gen_server:start({local, ?SERVER}, ?MODULE, [], []).
 
-%% start_supervisor(ListLayerSize, InputFile)->
-%% spawn_monitor(neuron_supervisor, start/2, [ListLayerSize, InputFile]).
+launch_network(Net_Size, [Node], Frequency_Detect)->
+  gen_server:cast(?SERVER, {launch_network,[single_node, Net_Size, [Node], Frequency_Detect]});
+launch_network(Net_Size, Nodes, Frequency_Detect)->
+  gen_server:cast(?SERVER, {launch_network,[four_nodes, Net_Size, Nodes, Frequency_Detect]}).
 
+test_networks(Freq={_, _}) ->
+  gen_server:cast(?SERVER, {test_network, Freq}).
 
-%run_sys(Inputfile) edit input file and send to supervisor.
+wx_env(Env)->
+  gen_server:cast(?SERVER, {env, Env}).
+
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -48,7 +54,7 @@ start_link() ->
   {ok, State :: #neuron_server_state{}} | {ok, State :: #neuron_server_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init([]) ->
-
+  neuron_wx:start(),
   {ok, #neuron_server_state{}}.
 
 %% @private
@@ -61,7 +67,7 @@ init([]) ->
   {noreply, NewState :: #neuron_server_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #neuron_server_state{}} |
   {stop, Reason :: term(), NewState :: #neuron_server_state{}}).
-handle_call(_Request, _From, State = #neuron_server_state{}) ->
+handle_call(_Requset, _From, State = #neuron_server_state{}) ->
   {reply, ok, State}.
 
 %% @private
@@ -70,8 +76,32 @@ handle_call(_Request, _From, State = #neuron_server_state{}) ->
   {noreply, NewState :: #neuron_server_state{}} |
   {noreply, NewState :: #neuron_server_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #neuron_server_state{}}).
-handle_cast(_Request, State = #neuron_server_state{}) ->
-  {noreply, State}.
+
+handle_cast({launch_network,[single_node, Net_Size, [Node], Frequency_Detect]},
+    State = #neuron_server_state{supervisors_single_node = Map}) ->
+  io:format("here cast1~n"),
+  NewSupervisor=neuron_supervisor:start(single_node, Net_Size, [Node], Frequency_Detect),
+  %NewSupervisor!{test_network,{195, 200}},
+  NewMap= case maps:find(Node, Map) of
+            error -> Map#{Node => [NewSupervisor]};
+            {ok, List} -> Map#{Node => List++[NewSupervisor]}
+          end,
+  io:format("here cast2~n"),
+  {noreply, State#neuron_server_state{supervisors_single_node = NewMap}};
+handle_cast({launch_network,[four_nodes, Net_Size, Nodes, Frequency_Detect]},
+    State = #neuron_server_state{supervisors_four_nodes = Supervisors}) ->
+  io:format("here cast1 four~n"),
+  NewSupervisor=neuron_supervisor:start(four_nodes, Net_Size, Nodes, Frequency_Detect),
+  {noreply, State#neuron_server_state{supervisors_four_nodes = Supervisors++[NewSupervisor]}};
+handle_cast(Req={test_network, _}, State = #neuron_server_state{supervisors_four_nodes = List, supervisors_single_node = Map}) ->
+  Supervisors = List ++ lists:flatten(maps:values(Map)),
+  lists:foreach(fun(Pid)-> Pid!Req end, Supervisors),
+  %%gather(Supervisors), %todo: supervisor sends a message with {done_testing, Pid}
+  {noreply, State};
+handle_cast({env,Env}, State)->
+  %wx:set_env(Env),
+  %wxMessageDialog:showModal(wxMessageDialog:new(wx:null(), "message server")),
+  {noreply, State#neuron_server_state{env = Env}}.
 
 %% @private
 %% @doc Handling all non call/cast messages
@@ -104,4 +134,8 @@ code_change(_OldVsn, State = #neuron_server_state{}, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-
+gather([Pid|Pids]) ->
+  receive
+    {done_testing, Pid} -> gather(Pids)
+  end;
+gather([])-> done.
