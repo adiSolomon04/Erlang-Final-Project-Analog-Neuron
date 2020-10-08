@@ -41,8 +41,8 @@ init(Node_Conc, Net_Size, _, Frequency_Detect)->
   %% INPUTS
   %% ====================
   put(freq_detect, Frequency_Detect),
-  put(start_freq, StartFreq=195),
-  put(stop_freq, StopFreq=205),
+  %put(start_freq, StartFreq=195),
+  %put(stop_freq, StopFreq=205),
   put(net_size, Net_Size),
   Nodes = case Node_Conc of
             four_nodes -> [node(),'eran@192.168.10.131','emm@192.168.10.131','yuda@192.168.10.131'];
@@ -65,7 +65,7 @@ init(Node_Conc, Net_Size, _, Frequency_Detect)->
   erlang:monitor(process,PidSender),
   put(pid_data_sender, PidSender),
   %% plot
-  PidPlotGraph = spawn(python_comm,plot_graph_process,[append_acc_vs_freq,plot_acc_vs_freq_global,[StartFreq]]),
+  PidPlotGraph = spawn(python_comm,plot_graph_process,[append_acc_vs_freq,plot_acc_vs_freq_global,[0]]), %% todo:add startFreq to global in python
   erlang:monitor(process,PidPlotGraph),
   put(pid_plot_graph, PidPlotGraph),
   %% timing
@@ -109,7 +109,7 @@ init(Node_Conc, Net_Size, _, Frequency_Detect)->
     {pidAcc,PidAcc},{neuronName2Pid_map,NeuronName2Pid_map},{linkedPid,LinkedPid},
     {nodes,Nodes}, {tids,Tids},{etsOwnerName,EtsOwnerName},
     {etsBackupName,EtsBackupName},{openEts,OpenEts},{netSize, Net_Size},
-    {freq, {StartFreq,StopFreq}}, {freqDetect, Frequency_Detect}]),
+    {freqDetect, Frequency_Detect}]),%{freq, {StartFreq,StopFreq}},
   supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,EtsOwnerName,EtsBackupName,OpenEts,HeirEts,HeirPid).
 
 supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,EtsOwnerName,EtsBackupName,OpenEts,HeirEts,HeirPid)->
@@ -185,6 +185,8 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,Lin
       supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,EtsOwnerName,EtsBackupName,OpenEts, HeirEts,HeirPid);
 
     {test_network,{StartFreq, StopFreq}}->
+      %%todo:add startFreq to global in python. call from here.
+      ets:insert(HeirEts,{freq, {StartFreq,StopFreq}}),
       put(start_freq, StartFreq),
       put(stop_freq, StopFreq),
       PidSender!{test_network, pcm_handler:create_wave_list(StartFreq,StopFreq,1)},

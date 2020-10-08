@@ -4,9 +4,11 @@
 %% API
 -export([start/0, handleButtonStart/2]).
 -include_lib("wx/include/wx.hrl").
+-compile(export_all).
 
 -define(SERVER, neuron_server).
--record(data_launch, {env, frame, net_size, net_conc, text_nodes, text_freq}).
+-record(data_launch, {net_size, net_conc, text_nodes, text_freq}).
+-record(data_test, {from, to}).
 -record(data_rb_nodes, {atom, list_nodes}).
 
 %% Will get the pid of server
@@ -22,9 +24,10 @@ start() ->
 
   %%Frame and components build
   Frame = wxFrame:new(wx:null(), ?wxID_ANY, "Analog Neuron - Resonator Network"),
+  wxWindow:setClientSize(Frame, {750, 650}),
+  wxWindow:centerOnParent(Frame, [{dir,?wxVERTICAL bor ?wxHORIZONTAL}]),
   TopTxt = wxStaticText:new(Frame, ?wxID_ANY, "Analog Neuron - Resonator Network"),
   wxTextCtrl:setFont(TopTxt, FontTopHeader),
-
 
   %L Components
   %%% Configure
@@ -51,11 +54,10 @@ start() ->
   wxStaticText:setFont(TextDetectFreq, FontSubHeader),
   TextCtrlFreqDetect = wxTextCtrl:new(Frame, ?wxID_ANY,  [{value, "104.2"}]),
   ButtonLaunchNet = wxButton:new(Frame, ?wxID_ANY, [{label, "LAUNCH NEW NETWORK"}]), %{style, ?wxBU_LEFT}
-  LaunchRec = #data_launch{env=wx:get_env(),
-    frame = Frame,
+  LaunchRec = #data_launch{
     net_size= RBSize17,
-    net_conc="not used yet",
-    text_nodes="not used yet",
+    net_conc=RBNodes4,
+    text_nodes=[TextNode1, TextNode2, TextNode3, TextNode4],
     text_freq= TextCtrlFreqDetect},
 
 
@@ -80,13 +82,17 @@ start() ->
   %%
   TextIntoSys = wxStaticText:new(Frame, ?wxID_ANY, "Into the System"),
   ButtonTestNet = wxButton:new(Frame, ?wxID_ANY, [{label, "TEST NETWORKS"}]), %{style, ?wxBU_LEFT}
-
+  TestNetworks = #data_test{
+    from = TextCtrlFromHz,
+    to = TextCtrlToHz
+  },
 
   %FilePickerInput = wxFilePickerCtrl:new(Frame, ?wxID_ANY),
   %ButtonStart = wxButton:new(Frame, ?wxID_ANY, [{label, "Start"}]),
 
   %%%Buttons
   wxButton:connect(ButtonLaunchNet, command_button_clicked, [{callback, fun handleLaunchNet/2}, {userData, LaunchRec}]),
+  wxButton:connect(ButtonTestNet, command_button_clicked, [{callback, fun handleTestNetworks/2}, {userData, TestNetworks}]),
   DataRBNodes=#data_rb_nodes{list_nodes = [TextNode2, TextNode3, TextNode4]},
   wxRadioButton:connect(RBNodes1, command_radiobutton_selected, [{callback, fun handleRBNodes/2}, {userData, DataRBNodes#data_rb_nodes{atom = single_node}}]),
   wxRadioButton:connect(RBNodes4, command_radiobutton_selected, [{callback, fun handleRBNodes/2}, {userData, DataRBNodes#data_rb_nodes{atom = four_nodes}}]),
@@ -168,6 +174,7 @@ start() ->
   wxWindow:setSizer(Frame, MainSizer),
   %wxWindow:setSize(Frame, 418, 547),
   %%Show Frame
+  neuron_server:wx_env(wx:get_env()),
   wxFrame:show(Frame).
   %wxFrame:destroy(Frame). todo? add exit and terminate all processes?
   %wxSizer:fitInside(MainSizerR, Panel).
@@ -179,7 +186,6 @@ panelPictureUpdate({Frame,PictureDraw}, #wx{obj =Panel} ) ->
   timer:sleep(250),
   {Width, Height} = wxPanel:getSize(Panel),
   Size={Width, Height},
-  io:format("~p~n", ["print"]),
   PictureDrawScaled = wxImage:scale(PictureDraw, round(Width*10/11), round(Height*10/11)),
   %% display picture
   Picture = wxBitmap:new(PictureDrawScaled),
@@ -189,25 +195,66 @@ panelPictureUpdate({Frame,PictureDraw}, #wx{obj =Panel} ) ->
   wxWindow:updateWindowUI(Frame),
   ok.
 
-handleLaunchNet(WxData, _) ->
-  LaunchRec=WxData#wx.userData,
-  RB17= LaunchRec#data_launch.net_size,
-  Net_Size = case wxRadioButton:getValue(RB17) of
-               false -> 4;
-               true -> 17
-             end,
-  FreqDetect = wxTextCtrl:getValue(LaunchRec#data_launch.text_freq),
-  case is_number(FreqDetect) of
-    false -> wxMessageDialog:showModal(wxMessageDialog:new(LaunchRec#data_launch.frame, "Frequency Detect is not a number!")); %% message box with error and exit this func.
-    true -> Nodes = wxTextCtrl:getValue(LaunchRec#data_launch.text_nodes)
-    %% check if all alive. if do - continue and run the program.
-  end.
-
 handleRBNodes(#wx{userData = Record}, _) ->
   case Record#data_rb_nodes.atom of
     four_nodes -> lists:foreach(fun(X)->wxTextCtrl:enable(X)end, Record#data_rb_nodes.list_nodes);
     single_node -> lists:foreach(fun(X)->wxTextCtrl:disable(X)end, Record#data_rb_nodes.list_nodes)
   end.
+
+handleLaunchNet(#wx{userData = LaunchRec}, _) ->
+  case get_float(wxTextCtrl:getValue(LaunchRec#data_launch.text_freq)) of
+    error -> wxMessageDialog:showModal(
+      wxMessageDialog:new(wx:null(), "Detect Frequency is not a number! Enter Frequency, Launch again"));
+    FreqDetect -> continueLaunch(LaunchRec, FreqDetect)
+  end.
+
+continueLaunch(LaunchRec, FreqDetect)->
+  RBSize17= LaunchRec#data_launch.net_size,
+  Net_Size = case wxRadioButton:getValue(RBSize17) of
+               false -> 4;
+               true -> 17
+             end,
+  RBNodes4 = LaunchRec#data_launch.net_conc,
+  Nodes = lists:map(fun(X)->Val=wxTextCtrl:getValue(X), list_to_atom(Val)end, LaunchRec#data_launch.text_nodes),
+  neuron_server:launch_network(Net_Size, case wxRadioButton:getValue(RBNodes4) of
+                                           true -> Nodes;
+                                           false -> [Node|_] = Nodes, [Node]
+                                         end, FreqDetect).
+
+
+handleTestNetworks(#wx{userData = TestRec}, _) ->
+  case get_int(wxTextCtrl:getValue(TestRec#data_test.from)) of
+    error -> wxMessageDialog:showModal(
+      wxMessageDialog:new(wx:null(), "Start Frequency is not a Integer"));
+    FreqStart -> case get_int(wxTextCtrl:getValue(TestRec#data_test.to)) of
+                   error -> wxMessageDialog:showModal(
+                     wxMessageDialog:new(wx:null(), "Stop Frequency is not Integer"));
+                 FreqStop ->  case FreqStop-FreqStart of
+                                Res when Res>0 -> neuron_server:test_networks({FreqStart, FreqStop});
+                                _ -> wxMessageDialog:new(wx:null(), "Frequency Start is smaller than Stop Please switch them.")
+                              end
+                 end
+  end.
+
+get_float(List_Or_Num)->
+  try list_to_float(List_Or_Num) of
+    FloatNum -> FloatNum
+  catch
+    error:_-> try list_to_integer(List_Or_Num) of
+                IntNum -> IntNum
+              catch
+                error:_ -> error
+              end
+  end.
+
+get_int(List_Or_Num)->
+  try list_to_integer(List_Or_Num) of
+    IntNum -> IntNum
+  catch
+    error:_ -> error
+  end.
+
+
 %% NOT USED
 handleButtonStart(WxData,_)->
   %Get the userdata
