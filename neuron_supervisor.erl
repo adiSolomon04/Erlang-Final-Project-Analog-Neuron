@@ -23,7 +23,7 @@ start_shell()->
     undefined -> register(shell, self());
     X -> ok
   end,
-  spawn(fun()->neuron_supervisor:start(four_nodes, 17, 200)end). %%104.649
+  spawn(fun()->neuron_supervisor:start(single_node, 17, 200)end). %%104.649
 
 
 %%% Node_Conc is single_node / four_nodes
@@ -36,11 +36,11 @@ start(Node_Conc, Net_Size,  Frequency_Detect)->
   %% ====================
   %% INPUTS
   %% ====================
-  put(start_freq, StartFreq=195),
-  put(stop_freq, StopFreq=205),
+  put(start_freq, StartFreq=200),
+  put(stop_freq, StopFreq=201),
   put(net_size, Net_Size),
   Nodes = case Node_Conc of
-            four_nodes -> [node(),'eran@192.168.10.131','emm@192.168.10.131','yuda@192.168.10.131'];
+            four_nodes -> [node(),'eran@192.168.1.151','emm@192.168.1.151','yuda@192.168.1.151'];
             single_node -> [node()]
           end,
   %% ====================
@@ -103,12 +103,12 @@ start(Node_Conc, Net_Size,  Frequency_Detect)->
   ets:insert(HeirEts,[{pidTiming,PidTiming},{pidSender,PidSender},{pidPlotGraph,PidPlotGraph},
     {pidAcc,PidAcc},{neuronName2Pid_map,NeuronName2Pid_map},{linkedPid,LinkedPid},
     {nodes,Nodes}, {tids,Tids},{mapNodesToPidOwnersNew,MapNodesToPidOwners},
-    {openEts,OpenEts},{netSize, Net_Size}]),
+    {openEts,OpenEts},{netSize, Net_Size},{pidMsg,PidMsg},{node_Conc,Node_Conc}, {frequency_Detect,Frequency_Detect},{pdm_msg_number,0},{start_freq, StartFreq},{stop_freq, StopFreq},{frequency_Detect,Frequency_Detect}]),
   supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts,HeirEts,HeirPid).
 
 supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts,HeirEts,HeirPid)->
   receive
-    MessageDown={'DOWN', _, process, _, normal}-> nothing;
+    MessageDown={'DOWN', _, process, _, normal}-> io:format("hereee!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1~n") ,exit(HeirPid,kill),nothing;
     MessageDown={'DOWN', Ref, process, Pid, Why}->
       io:format("~p~n",[MessageDown]),
       ValuePidEtsOwner = lists:search(fun({{_,PidEtsOwner,_},_}) ->PidEtsOwner==Pid end,OpenEts),
@@ -169,13 +169,36 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,Lin
           ets:insert(HeirEts,[{pidSender,PidSenderNew}]),
           exit(LinkedPid, kill_and_recover),
           supervisor(PidTiming,PidSenderNew,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts, HeirEts,HeirPid);
+        Pid == PidMsg -> PidMsgNew = spawn(fun()->pcm_handler:msg_process(PidSender)end),
+          erlang:monitor(process,PidMsgNew),
+          put(pid_msg,PidMsgNew),
+          ets:insert(HeirEts,{pidMsg,PidMsgNew}),
+          exit(LinkedPid, kill_and_recover),
+          supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsgNew,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts, HeirEts,HeirPid);
+        Pid == PidPlotGraph ; Pid == PidAcc -> io:format("PidPlotGraph or PidAcc have been fall, cann't continue, kill all proccess and dtart from the begining~n"),
+            exit(PidTiming, kill_and_start_over),
+            exit(PidSender, kill_and_start_over),
+            exit(PidPlotGraph, kill_and_start_over),
+            exit(PidAcc, kill_and_start_over),
+            exit(PidMsg, kill_and_start_over),
+            exit(LinkedPid, kill_and_start_over),
+            exit(HeirPid, kill_and_start_over),
 
-        true -> io:format("process down not fix~p~n",[{'DOWN', Ref, process, Pid, Why}]),
+          lists:foreach(fun({{NodeName,PidEtsOwner,PidBackup},Tid}) ->  exit(PidEtsOwner, kill_and_start_over),exit(PidBackup, kill_and_start_over) end , OpenEts),
+          flushKillMSG(),
+          [{node_Conc,Node_Conc}]=ets:lookup(HeirEts,node_Conc),
+          [{netSize,Net_Size}]=ets:lookup(HeirEts,netSize),
+          [{frequency_Detect,Frequency_Detect}]=ets:lookup(HeirEts,frequency_Detect),
+          ets:delete(HeirEts),
+          io:format("strart from the begning~n"),
+          start(Node_Conc, Net_Size,  Frequency_Detect);
+          true -> io:format("process down not fix~p~n",[{'DOWN', Ref, process, Pid, Why}]),
           supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts, HeirEts,HeirPid)
       end;
 
     {from_pdm, NumberOfMessages}->
       put(pdm_msg_number,get(pdm_msg_number)+NumberOfMessages),
+      ets:insert(HeirEts,{pdm_msg_number,get(pdm_msg_number)}),
       supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts, HeirEts,HeirPid);
 
     {test_network,{StartFreq, StopFreq}}->
@@ -186,6 +209,12 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,Lin
   end.
 
 
+
+flushKillMSG()->
+  receive
+    X->flushKillMSG()
+    after 100->ok
+  end.
     %%   if Pid == PidBackup -> {ok,PidBackNew} = rpc:call(NodeName,ets_statem,start_link,[EtsBackupName,Pid_Server,backup,none]),
     %%   rpc:call(NodeName,ets_statem,callChangeHeir,[PidEtsOwner,PidBackNew]),
     %%   erlang:monitor(process,PidBackNew),
@@ -207,12 +236,28 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,Lin
 
 protectionPid()->
   receive
-    {'ETS-TRANSFER',HeirEts,_,_}->PidTiming=ets:lookup(HeirEts,pidTiming),PidSender=ets:lookup(HeirEts,pidSender),
-      PidPlotGraph=ets:lookup(HeirEts,pidPlotGraph),PidAcc=ets:lookup(HeirEts,pidAcc),PidMsg=ets:lookup(HeirEts,pidMsg),NeuronName2Pid_map=ets:lookup(HeirEts,neuronName2Pid_map),
-      LinkedPid=ets:lookup(HeirEts,linkedPid),Nodes=ets:lookup(HeirEts,nodes),Tids=ets:lookup(HeirEts,tids),
-      MapNodesToPidOwnersNew=ets:lookup(HeirEts,mapNodesToPidOwnersNew),OpenEts=ets:lookup(HeirEts,openEts),
-      Net_Size=ets:lookup(HeirEts,netSize),
+    {'ETS-TRANSFER',HeirEts,_,_}->[{pidTiming,PidTiming}]=ets:lookup(HeirEts,pidTiming),[{pidSender,PidSender}]=ets:lookup(HeirEts,pidSender),
+      [{pidPlotGraph,PidPlotGraph}]=ets:lookup(HeirEts,pidPlotGraph),[{pidAcc,PidAcc}]=ets:lookup(HeirEts,pidAcc),
+      [{pidMsg,PidMsg}]=ets:lookup(HeirEts,pidMsg),[{neuronName2Pid_map,NeuronName2Pid_map}]=ets:lookup(HeirEts,neuronName2Pid_map),
+      [{linkedPid,LinkedPid}]=ets:lookup(HeirEts,linkedPid),[{nodes,Nodes}]=ets:lookup(HeirEts,nodes),[{tids,Tids}]=ets:lookup(HeirEts,tids),
+      [{mapNodesToPidOwnersNew,MapNodesToPidOwnersNew}]=ets:lookup(HeirEts,mapNodesToPidOwnersNew),[{openEts,OpenEts}]=ets:lookup(HeirEts,openEts),
+      [{netSize,Net_Size}]=ets:lookup(HeirEts,netSize), [{pdm_msg_number,Pdm_msg_number}] = ets:lookup(HeirEts,pdm_msg_number),
+      [{start_freq, StartFreq}] = ets:lookup(HeirEts,start_freq), [{stop_freq, StopFreq}] =  ets:lookup(HeirEts,stop_freq),
+      [{frequency_Detect,Frequency_Detect}] = ets:lookup(HeirEts,frequency_Detect),
+      put(pdm_msg_number,Pdm_msg_number),
+
+
+
+      io:format("PidPlotGraph~p~n",[PidPlotGraph]),
       put(net_size, Net_Size),
+      put(start_freq, StartFreq),
+      put(stop_freq, StopFreq),
+      put(pid_data_sender, PidSender),
+      put(pid_plot_graph, PidPlotGraph),
+      put(pid_acc,PidAcc),
+      put(freq, Frequency_Detect+4),% todo: change freq.
+      put(pdm_msg_number,0),
+      put(pid_msg,PidMsg),
       {HeirPid,_}=spawn_monitor(fun()->protectionPid() end),
       erlang:monitor(process,PidSender),
       PidSender!{supervisor, self()},
@@ -220,6 +265,7 @@ protectionPid()->
       erlang:monitor(process,PidAcc),
       ListPid = maps:values(NeuronName2Pid_map),
       {NewLinkedPid,_} = spawn_monitor(fun()->lists:foreach(fun(X)->link(X)end,ListPid), receive Y->Y end end),
+
       io:format("4.~n"),
       ets:setopts(HeirEts,{heir, HeirPid, 'SupervisorDown'}),
       supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,NewLinkedPid,Nodes,Tids,MapNodesToPidOwnersNew,OpenEts,HeirEts,HeirPid)

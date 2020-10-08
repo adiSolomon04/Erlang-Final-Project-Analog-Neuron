@@ -126,7 +126,11 @@ sendToFirstNeuron(Acc,Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid) 
       S=self(),
       neuron_statem:sendMessage(NewNeuronPid,S,Bit, x),
       {NewNeuronPid,NewRand_gauss_var,0};
-    {supervisor, NewSupervisor}-> put(supervisor, NewSupervisor)
+    {supervisor, NewSupervisor}-> put(supervisor, NewSupervisor),
+      NewNeuronPid= NeuronPid,
+      S=self(),
+      neuron_statem:sendMessage(NeuronPid,S,Bit, x),
+      {NewNeuronPid,NewRand_gauss_var,continue}
     after 0 ->
     if
       SendingRateCounter rem SendingRate == 0 -> timer:sleep(1);
