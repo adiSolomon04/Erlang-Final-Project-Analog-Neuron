@@ -14,7 +14,7 @@ graph4neurons() ->
    graphviz:set_shape("Mdiamond", input_pdm),
    Edges = [{afi1, afi21}, {afi21, afi22}, {afi22, afi23}, {afi23, afi1}],
    graphviz:add_cluster("FeedBack Layer", Edges),
-   graphviz:to_file("network4.png", "png"),
+   graphviz:to_file("AuthorsTree.png", "png"),
    graphviz:delete().
 
 %  graphviz:graph17neurons().

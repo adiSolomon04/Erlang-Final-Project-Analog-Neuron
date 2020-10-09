@@ -16,11 +16,11 @@
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
-  code_change/3]).
+  code_change/3, handlePicture/2]).
 
 -define(SERVER, neuron_server).
 
--record(neuron_server_state, {supervisors_four_nodes=[], supervisors_single_node=#{}, env}).
+-record(neuron_server_state, {supervisors_four_nodes=[], supervisors_single_node=#{}, env, frame, digraph_nodes, digraph_edges}).
 
 %%%===================================================================
 %%% API
@@ -54,8 +54,20 @@ wx_env(Env)->
   {ok, State :: #neuron_server_state{}} | {ok, State :: #neuron_server_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init([]) ->
-  neuron_wx:start(),
-  {ok, #neuron_server_state{}}.
+  monitor_node('eran@adisolo', true),
+  {Env} = neuron_wx:start(),
+  %wx:set_env(Env),
+  graphviz:digraph("Network"),
+  graphviz:to_file("network.png", "png"),
+  graphviz:delete(),
+  Frame = wxFrame:new(wx:null(), 1, "Launched Networks and Nodes"),
+  wxFrame:show(Frame),
+  Panel = wxPanel:new(Frame),
+  wxPanel:connect(Panel, paint, [{callback,fun(WxData, _)->
+    neuron_server:handlePicture({nothing,Panel}, WxData)
+                                           end}]),
+  handlePicture({Env, Frame}, x),
+  {ok, #neuron_server_state{digraph_nodes = digraph:new(), digraph_edges = digraph:new(), env=Env, frame=Frame}}.
 
 %% @private
 %% @doc Handling call messages
@@ -110,6 +122,7 @@ handle_cast({env,Env}, State)->
   {noreply, NewState :: #neuron_server_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #neuron_server_state{}}).
 handle_info(_Info, State = #neuron_server_state{}) ->
+  io:format("~p~n", [_Info]),
   {noreply, State}.
 
 %% @private
@@ -139,3 +152,42 @@ gather([Pid|Pids]) ->
     {done_testing, Pid} -> gather(Pids)
   end;
 gather([])-> done.
+
+
+display_net(State=#neuron_server_state{env=Env, frame = Frame})->
+  create_new_net(State),
+  handlePicture({Env, Frame}, x).
+
+create_new_net(#neuron_server_state{digraph_nodes = GraphNodes, digraph_edges = Graph})->
+  Nodes = digraph:vertices(GraphNodes),
+  EdgeList = getEdgesList(Graph),
+  Edges = lists:foreach(fun(X) -> {element(3,X),element(2,X)} end, EdgeList),
+  graphviz:digraph("Network"),
+  graphviz:add_cluster_nodes("Nodes Used",Nodes),
+  lists:foreach(fun({X,Y}) -> graphviz:add_edge(X,Y)end, Edges),
+  graphviz:set_shape("doublecircle", Nodes),
+  graphviz:to_file("network.png", "png"),
+  graphviz:delete().
+
+handlePicture({Env, Frame}, _)->
+  timer:sleep(200),
+  case Env of
+    nothing -> do_nothing;
+    _ -> wx:set_env(Env)
+  end,
+  Picture = wxImage:new("AuthorsTree.png"),
+  {Width, Height} = {wxImage:getWidth(Picture),wxImage:getHeight(Picture)},
+  {Width1, Height1} = wxPanel:getSize(Frame),
+  %{Width1, Height1} = wxPanel:getSize(Panel17),
+  PictureDrawScaled1 = wxImage:scale(Picture, round(Width*Height1/Height), round(Height1)),
+  %"network17.png"),
+  PictureBit = wxBitmap:new(PictureDrawScaled1),
+  DC = wxPaintDC:new(Frame),
+  wxDC:drawBitmap(DC, PictureBit, {0,0}),
+  wxPaintDC:destroy(DC),
+  wxWindow:updateWindowUI(Frame),
+  done.
+
+getEdgesList(G)->
+  Edges=digraph:edges(G),
+  [digraph:edge(G,E) || E <- Edges].

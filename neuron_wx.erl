@@ -176,14 +176,8 @@ start() ->
   %%wxSizer:add(MainSizerBottom, TextOutput, [{flag, ?wxALL bor ?wxALIGN_CENTRE }, {border, 8}]),
 
   wxWindow:setSizer(Frame, MainSizer),
-  %wxWindow:setSize(Frame, 418, 547),
-  %%Show Frame
-  %%neuron_server:wx_env(wx:get_env()),
   wxFrame:show(Frame),
-  {Frame, ePicturePanelNet, eEnv}.
-  %wxFrame:destroy(Frame). todo? add exit and terminate all processes?
-  %wxSizer:fitInside(MainSizerR, Panel).
-
+  {wx:get_env()}.
 
 
 % upload the picture to the panel
@@ -194,7 +188,6 @@ panelPictureUpdate({Frame,PictureDraw17}, #wx{obj =Panel17} ) ->
   %{Width1, Height1} = wxPanel:getSize(Panel17),
   PictureDrawScaled1 = wxImage:scale(PictureDraw17, round(Width*10/11*Height1/Height), round(Height1*10/11)),
   %% display picture
-  io:format("paint~n"),
   Picture1 = wxBitmap:new(PictureDrawScaled1),
   DC1 = wxPaintDC:new(Panel17),
   wxDC:drawBitmap(DC1, Picture1, {0,0}),
@@ -202,10 +195,11 @@ panelPictureUpdate({Frame,PictureDraw17}, #wx{obj =Panel17} ) ->
   wxWindow:updateWindowUI(Frame),
   ok.
 
+
 updatePicture(PictureDraw, PicturePanel, Env) ->
   wx:set_env(Env),
   {Width, Height} = wxPanel:getSize(PicturePanel),
-  PictureDrawScaled = wxImage:scale(PictureDraw, round(Width*10/11), round(Height*10/11)),
+  PictureDrawScaled = wxImage:scale(PictureDraw, round(Width), round(Height)),
   %% display picture
   Picture = wxBitmap:new(PictureDrawScaled),
   DC = wxPaintDC:new(PicturePanel),
