@@ -20,7 +20,7 @@
 
 -define(SERVER, neuron_server).
 
--record(neuron_server_state, { supervisors_map=#{'adi@192.168.10.131'=>[],'eran@192.168.10.131'=>[],'emm@192.168.10.131'=>[],'yuda@192.168.10.131'=>[]}, env}).
+-record(neuron_server_state, { supervisors_map=#{}, env}).
 
 %%%===================================================================
 %%% API
@@ -92,24 +92,8 @@ handle_cast({launch_network,[four_nodes, Net_Size, Nodes, Frequency_Detect]},
     State = #neuron_server_state{supervisors_map = Map}) ->
 io:format("handle_cast Nodes: ~p ~n ",[Nodes]),
   NewSupervisor=neuron_supervisor:start(four_nodes, Net_Size, Nodes, Frequency_Detect),
-  [Node1,Node2,Node3,Node4]=maps:keys(Map),
-  NewMap1= case maps:find(Node1, Map) of
-            error ->monitor_node(Node1, true), Map#{Node1 => [NewSupervisor]};
-            {ok, List1} -> Map#{Node1 => List1++[NewSupervisor]}
-          end,
-  NewMap2= case maps:find(Node2, NewMap1) of
-            error ->monitor_node(Node2, true), Map#{Node2 => [NewSupervisor]};
-            {ok, List2} -> NewMap1#{Node2 => List2++[NewSupervisor]}
-          end,
-  NewMap3= case maps:find(Node3, NewMap2) of
-            error ->monitor_node(Node3, true), Map#{Node3 => [NewSupervisor]};
-            {ok, List3} -> NewMap2#{Node3 => List3++[NewSupervisor]}
-          end,
-  NewMap4= case maps:find(Node4, NewMap3) of
-            error ->monitor_node(Node4, true), Map#{Node4 => [NewSupervisor]};
-            {ok, List4} -> NewMap3#{Node4 => List4++[NewSupervisor]}
-          end,
-  {noreply, State#neuron_server_state{supervisors_map = NewMap4}};
+  NewMap=makeMap(Nodes,Map,NewSupervisor,length(Nodes)),
+  {noreply, State#neuron_server_state{supervisors_map = NewMap}};
 handle_cast(Req={test_network, _}, State = #neuron_server_state{supervisors_map = Map}) ->
   Supervisors =  lists:flatten(maps:values(Map)),
   lists:foreach(fun(Pid)-> Pid!Req end, Supervisors),
@@ -122,10 +106,8 @@ handle_cast({env,Env}, State)->
 
 %% @private
 %% @doc Handling all non call/cast messages
--spec(handle_info(Info :: timeout() | term(), State :: #neuron_server_state{}) ->
-  {noreply, NewState :: #neuron_server_state{}} |
-  {noreply, NewState :: #neuron_server_state{}, timeout() | hibernate} |
-  {stop, Reason :: term(), NewState :: #neuron_server_state{}}).
+
+
 handle_info({nodedown, NodeDown}, State = #neuron_server_state{supervisors_map = Map}) ->
   io:format("NODEDOWNAHAHAHAHAHAHAHAHAHAHAHAH~n"),
   Nodes=maps:keys(Map),
@@ -133,7 +115,10 @@ handle_info({nodedown, NodeDown}, State = #neuron_server_state{supervisors_map =
   MapList= lists:map(fun(X)->List= maps:get(X,Map),NewList=List--ListDown,{X,NewList} end,Nodes),
   lists:foreach(fun(X)-> X ! 'NODEDOWN' end,ListDown),
   NewMap=maps:from_list(MapList),
-{noreply, State#neuron_server_state{supervisors_map = NewMap}}.
+{noreply, State#neuron_server_state{supervisors_map = NewMap}};
+handle_info(Message, State = #neuron_server_state{supervisors_map = Map}) ->
+  io:format("NODEDOWNAHAHAHAHAHAHAHAHAHAHAHAH ~p~n",[Message])
+  .
 
 %% @private
 %% @doc This function is called by a gen_server when it is about to
@@ -162,3 +147,10 @@ gather([Pid|Pids]) ->
     {done_testing, Pid} -> gather(Pids)
   end;
 gather([])-> done.
+
+makeMap(_,Map,_,0)-> Map;
+makeMap(Nodes,Map,NewSupervisor,N)-> Curr=lists:nth(N,Nodes),NewN=N-1,
+  NewMap=case maps:find(Curr, Map) of
+  error ->io:format("Node: ~p ~n ",[Curr]),monitor_node(Curr, true), Map#{Curr => [NewSupervisor]};
+  {ok, List} -> Map#{Curr => List++[NewSupervisor]}
+  end,makeMap(Nodes,NewMap,NewSupervisor,NewN).
