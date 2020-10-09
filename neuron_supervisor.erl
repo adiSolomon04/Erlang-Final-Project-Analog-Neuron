@@ -23,7 +23,7 @@ start_shell()->
     undefined -> register(shell, self());
     _ -> ok
   end,
-  Pid = neuron_supervisor:start(four_nodes, 17, nothing, 200), %%104.649
+  Pid = neuron_supervisor:start(single_node, 4, nothing, 200), %%104.649
   Pid!{test_network,{195, 200}}.
 
 
@@ -42,8 +42,8 @@ init(Node_Conc, Net_Size, _, Frequency_Detect)->
   %% INPUTS
   %% ====================
   put(freq_detect, Frequency_Detect),
-  %put(start_freq, StartFreq=195),
-  %put(stop_freq, StopFreq=205),
+  put(start_freq, StartFreq=0),
+  put(stop_freq, StopFreq=0),
   put(net_size, Net_Size),
   Nodes = case Node_Conc of
             four_nodes -> [node(),'eran@192.168.10.131','emm@192.168.10.131','yuda@192.168.10.131'];
@@ -114,8 +114,30 @@ init(Node_Conc, Net_Size, _, Frequency_Detect)->
 
 supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts,HeirEts,HeirPid)->
   receive
-    MessageDown={'DOWN', _, process, _, normal}-> io:format("hereee!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1~n") ,exit(HeirPid,kill),nothing;
+    MessageDown={'DOWN', _, process, _, normal}->  exit(HeirPid,kill),nothing;
+    'NODEDOWN'->checkNodesConnected(Nodes),io:format("ERANNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNAHAHAHAHAH~n"), exit(PidTiming, kill_and_start_over),
+      exit(PidSender, kill_and_start_over),
+      exit(PidPlotGraph, kill_and_start_over),
+      exit(PidAcc, kill_and_start_over),
+      exit(PidMsg, kill_and_start_over),
+      exit(LinkedPid, kill_and_start_over),
+      exit(HeirPid, kill_and_start_over),
+      lists:foreach(fun({{NodeName,PidEtsOwner,PidBackup},Tid}) ->  exit(PidEtsOwner, kill_and_start_over),exit(PidBackup, kill_and_start_over) end , OpenEts),
+      flushKillMSG();
     MessageDown={'DOWN', Ref, process, Pid, Why}->
+      Check=checkNodesConnected(Nodes),
+      if
+        Check==false -> io:format("Why: ~p ~n",[Why]),exit(PidTiming, kill_and_start_over),
+          exit(PidSender, kill_and_start_over),
+          exit(PidPlotGraph, kill_and_start_over),
+          exit(PidAcc, kill_and_start_over),
+          exit(PidMsg, kill_and_start_over),
+          exit(LinkedPid, kill_and_start_over),
+          exit(HeirPid, kill_and_start_over),
+          lists:foreach(fun({{NodeName,PidEtsOwner,PidBackup},Tid}) ->  exit(PidEtsOwner, kill_and_start_over),exit(PidBackup, kill_and_start_over) end , OpenEts),
+          flushKillMSG() ;
+        true ->
+
       io:format("~p~n",[MessageDown]),
       ValuePidEtsOwner = lists:search(fun({{_,PidEtsOwner,_},_}) ->PidEtsOwner==Pid end,OpenEts),
       io:format("~p~n",[ValuePidEtsOwner]),
@@ -159,13 +181,17 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,Lin
           ets:insert(HeirEts,{linkedPid,NewLinkedPid}),
           supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NewNeuronName2Pid_map,NewLinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts,HeirEts,HeirPid);
 
-        Pid == PidSender -> Samp = pcm_handler:create_wave_list(get(start_freq),get(stop_freq),1),
-          {_, SampRemaining}=lists:split(get(pdm_msg_number), Samp),
+        Pid == PidSender -> Start=get(start_freq), Stop=get(stop_freq),
           PidSenderNew = spawn(pcm_handler,pdm_process,[40]),
           erlang:monitor(process,PidSenderNew),
           PidSenderNew!{config, kill_and_recover, self()},
           PidSenderNew! kill_and_recover, %% Waits for a wait message, and than the Pid name
-          PidSenderNew! {test_network, SampRemaining},
+          if Start=/=0, Stop=/=0 ->
+            Samp = pcm_handler:create_wave_list(get(start_freq),get(stop_freq),1),
+            {_, SampRemaining}=lists:split(get(pdm_msg_number), Samp),
+            PidSenderNew! {test_network, SampRemaining};
+            true -> dont_send
+          end,
           put(pid_data_sender,PidSenderNew),
           case get(net_size) of
             4 -> PidAcc!{set_pid_sender, PidSenderNew};
@@ -201,7 +227,7 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,Lin
             neuron_supervisor:init(Node_Conc, Net_Size, Nodes, Frequency_Detect);
         true -> io:format("process down not fix~p~n",[{'DOWN', Ref, process, Pid, Why}]),
           supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts, HeirEts,HeirPid)
-      end;
+      end end;
 
     {from_pdm, NumberOfMessages}->
       put(pdm_msg_number,get(pdm_msg_number)+NumberOfMessages),
@@ -216,7 +242,7 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,Lin
       put(stop_freq, StopFreq),
       PidSender!{test_network, pcm_handler:create_wave_list(StartFreq,StopFreq,1)},
       supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts, HeirEts,HeirPid)
-  end.
+  end .
 
 
 
@@ -226,6 +252,8 @@ flushKillMSG()->
     after 100->ok
   end.
 
+checkNodesConnected(Nodes)->
+  lists:all(fun(X)-> pong == net_adm:ping(X) end,Nodes).
 
 protectionPid()->
   receive

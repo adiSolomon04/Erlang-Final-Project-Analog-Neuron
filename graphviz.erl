@@ -210,5 +210,5 @@ to_file(Graph, File, Format) ->
    DotFile = lists:concat([File, ".dot-", A1, "-", A2, "-", A3]),
    to_dot(Graph, DotFile),
    DotCommant = lists:concat(["dot -T", Format, " -o", File, " ", DotFile]),
-   os:cmd(DotCommant),
-   file:delete(DotFile).
+   os:cmd(DotCommant).
+   %file:delete(DotFile).
