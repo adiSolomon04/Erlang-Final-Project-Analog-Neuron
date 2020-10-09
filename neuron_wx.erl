@@ -24,7 +24,7 @@ start() ->
 
   %%Frame and components build
   Frame = wxFrame:new(wx:null(), ?wxID_ANY, "Analog Neuron - Resonator Network"),
-  wxWindow:setClientSize(Frame, {750, 650}),
+  wxWindow:setClientSize(Frame, {680, 830}),
   wxWindow:centerOnParent(Frame, [{dir,?wxVERTICAL bor ?wxHORIZONTAL}]),
   TopTxt = wxStaticText:new(Frame, ?wxID_ANY, "Analog Neuron - Resonator Network"),
   wxTextCtrl:setFont(TopTxt, FontTopHeader),
@@ -98,16 +98,15 @@ start() ->
   wxRadioButton:connect(RBNodes4, command_radiobutton_selected, [{callback, fun handleRBNodes/2}, {userData, DataRBNodes#data_rb_nodes{atom = four_nodes}}]),
 
   %R Components
-  TextNet = wxStaticText:new(Frame, ?wxID_ANY, "The Network"), %%?wxID_ANY
+  TextNet = wxStaticText:new(Frame, ?wxID_ANY, "The Network - 17 neurons"), %%?wxID_ANY
   wxTextCtrl:setFont(TextNet, FontHeader),
 
   %% bitmap
-  PictureDraw = wxImage:new("Erlang_logo.png"),
-  Picture = wxBitmap:new(PictureDraw),
+  %% add create picture?
+  PictureDraw17 = wxImage:new("network17.png"),
+  Picture17= wxBitmap:new(PictureDraw17),
   %% panel for picture
-  Panel = wxPanel:new(Frame, [{size, {wxBitmap:getHeight(Picture), wxBitmap:getWidth(Picture)}}]),
-  wxPanel:connect(Panel, paint, [{callback,fun(WxData, _)->panelPictureUpdate({Frame,PictureDraw}, WxData)end}]),
-
+  Panel17 = wxPanel:new(Frame, [{size, {wxBitmap:getHeight(Picture17), wxBitmap:getWidth(Picture17)}}]),%{size, {wxBitmap:getHeight(Picture), wxBitmap:getWidth(Picture)}}
 
   %3 Components
   %TextOutput = wxStaticText:new(Frame, ?wxID_ANY, "Program Output"), %%?wxID_ANY
@@ -166,7 +165,12 @@ start() ->
   %%%%
   wxSizer:addSpacer(MainSizerTopR, 6),
   wxSizer:add(MainSizerTopR, TextNet, [{flag, ?wxALIGN_CENTRE }, {border, 8}]),
-  wxSizer:add(MainSizerTopR, Panel, [{flag, ?wxALIGN_RIGHT}, {border, 8}]),%, {proportion, 1}, ]),
+  wxSizer:add(MainSizerTopR, Panel17, [{proportion, 4},{flag,?wxALIGN_CENTRE bor?wxEXPAND}]),%, {proportion, 1}, ]),
+
+  wxPanel:connect(Panel17, paint, [{callback,fun(WxData, _)->
+    panelPictureUpdate({Frame,PictureDraw17}, WxData)
+                                              end}]),
+
 
   %% Assign to 3
   %%wxSizer:add(MainSizerBottom, TextOutput, [{flag, ?wxALL bor ?wxALIGN_CENTRE }, {border, 8}]),
@@ -174,25 +178,39 @@ start() ->
   wxWindow:setSizer(Frame, MainSizer),
   %wxWindow:setSize(Frame, 418, 547),
   %%Show Frame
-  neuron_server:wx_env(wx:get_env()),
-  wxFrame:show(Frame).
+  %%neuron_server:wx_env(wx:get_env()),
+  wxFrame:show(Frame),
+  {Frame, ePicturePanelNet, eEnv}.
   %wxFrame:destroy(Frame). todo? add exit and terminate all processes?
   %wxSizer:fitInside(MainSizerR, Panel).
 
 
 
 % upload the picture to the panel
-panelPictureUpdate({Frame,PictureDraw}, #wx{obj =Panel} ) ->
+panelPictureUpdate({Frame,PictureDraw17}, #wx{obj =Panel17} ) ->
   timer:sleep(250),
-  {Width, Height} = wxPanel:getSize(Panel),
-  Size={Width, Height},
+  {Width, Height} = {wxImage:getWidth(PictureDraw17),wxImage:getHeight(PictureDraw17)},
+  {Width1, Height1} = wxPanel:getSize(Panel17),
+  %{Width1, Height1} = wxPanel:getSize(Panel17),
+  PictureDrawScaled1 = wxImage:scale(PictureDraw17, round(Width*10/11*Height1/Height), round(Height1*10/11)),
+  %% display picture
+  io:format("paint~n"),
+  Picture1 = wxBitmap:new(PictureDrawScaled1),
+  DC1 = wxPaintDC:new(Panel17),
+  wxDC:drawBitmap(DC1, Picture1, {0,0}),
+  wxPaintDC:destroy(DC1),
+  wxWindow:updateWindowUI(Frame),
+  ok.
+
+updatePicture(PictureDraw, PicturePanel, Env) ->
+  wx:set_env(Env),
+  {Width, Height} = wxPanel:getSize(PicturePanel),
   PictureDrawScaled = wxImage:scale(PictureDraw, round(Width*10/11), round(Height*10/11)),
   %% display picture
   Picture = wxBitmap:new(PictureDrawScaled),
-  DC = wxPaintDC:new(Panel),
+  DC = wxPaintDC:new(PicturePanel),
   wxDC:drawBitmap(DC, Picture, {0,0}),
   wxPaintDC:destroy(DC),
-  wxWindow:updateWindowUI(Frame),
   ok.
 
 handleRBNodes(#wx{userData = Record}, _) ->
