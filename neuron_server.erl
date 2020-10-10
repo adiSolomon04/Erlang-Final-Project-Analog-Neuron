@@ -91,7 +91,7 @@ handle_call(_Requset, _From, State = #neuron_server_state{}) ->
 
 handle_cast({launch_network,[single_node, Net_Size, [Node], Frequency_Detect]},
     State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num, frame = Panel}) ->
-  Check=checkNodesConnected(Node),
+  Check=checkNodesConnected(Node,Node),
   io:format("Node: ~p~n",[Node]),
   io:format("Check: ~p~n",[Check]),
   if
@@ -117,7 +117,9 @@ handle_cast({launch_network,[single_node, Net_Size, [Node], Frequency_Detect]},
   end;%, pid2name = Pid2Name#{NewSupervisor=>Sup_Name}
 handle_cast({launch_network,[four_nodes, Net_Size, Nodes, Frequency_Detect]},
     State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num}) -> %, pid2name = Pid2Name
-  Check=checkNodesConnected(lists:nth(1,Nodes)),
+  Check=checkNodesConnected(Nodes,lists:nth(1,Nodes)),
+  io:format("Nodes17: ~p~n",[Nodes]),
+  io:format("Check17: ~p~n",[Check]),
   if
     Check==false ->
       wxMessageDialog:showModal(wxMessageDialog:new(wx:null(), "Wrong Nodes")),{noreply, State#neuron_server_state{supervisors_map = Map}};
@@ -261,10 +263,8 @@ getName_only_([String]) ->
             end, String),
   io:format("~p~n", [NewString]),
   NewString.
-checkNodesConnected(CurrNode)->
-  Nodes=nodes(),
+checkNodesConnected(Nodes,CurrNode)->
   Node=node(),
-
   io:format("Nodes: ~p~n", [Nodes]),
   io:format("Node: ~p~n", [Node]),
   io:format("CurrNode: ~p~n", [CurrNode]),
