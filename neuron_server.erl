@@ -91,7 +91,14 @@ handle_call(_Requset, _From, State = #neuron_server_state{}) ->
 
 handle_cast({launch_network,[single_node, Net_Size, [Node], Frequency_Detect]},
     State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num, frame = Panel}) ->
-  io:format("here cast1~n"),
+  Check=checkNodesConnected(Node),
+  io:format("Node: ~p~n",[Node]),
+  io:format("Check: ~p~n",[Check]),
+  if
+    Check==false ->
+      wxMessageDialog:showModal(wxMessageDialog:new(wx:null(), "Wrong Node")),{noreply, State#neuron_server_state{supervisors_map = Map}};
+    true ->
+
   NewSupervisor=neuron_supervisor:start(single_node, Net_Size, [Node], Frequency_Detect),
   Sup_Name = getSupName(Num, Frequency_Detect),%io_lib:format("supervisor_~p_~fHz",[Num, Frequency_Detect]),
   digraph:add_vertex(GraphNodes, getNodeName(Node)),
@@ -106,10 +113,15 @@ handle_cast({launch_network,[single_node, Net_Size, [Node], Frequency_Detect]},
   io:format("here cast2~n"),
   display_net(State),
   wxWindow:refresh(Panel),
-  {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1}}; %, pid2name = Pid2Name#{NewSupervisor=>Sup_Name}
+  {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1}}
+  end;%, pid2name = Pid2Name#{NewSupervisor=>Sup_Name}
 handle_cast({launch_network,[four_nodes, Net_Size, Nodes, Frequency_Detect]},
     State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num}) -> %, pid2name = Pid2Name
-io:format("handle_cast Nodes: ~p ~n ",[Nodes]),
+  Check=checkNodesConnected(lists:nth(1,Nodes)),
+  if
+    Check==false ->
+      wxMessageDialog:showModal(wxMessageDialog:new(wx:null(), "Wrong Nodes")),{noreply, State#neuron_server_state{supervisors_map = Map}};
+    true ->
   NewSupervisor=neuron_supervisor:start(four_nodes, Net_Size, Nodes, Frequency_Detect),
   Sup_Name = getSupName(Num, Frequency_Detect),%io_lib:format("supervisor_~p_~pHz",[Num, Frequency_Detect]),
   lists:foreach(fun(Node) ->
@@ -121,7 +133,8 @@ end,
     Nodes),
   NewMap=makeMap(Nodes,Map,NewSupervisor,length(Nodes)),
   display_net(State),
-  {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1}}; %, pid2name = Pid2Name#{NewSupervisor=>Sup_Name}
+  {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1}} %, pid2name = Pid2Name#{NewSupervisor=>Sup_Name
+end;
 handle_cast(Req={test_network, _}, State = #neuron_server_state{supervisors_map = Map}) ->
   Supervisors =  lists:flatten(maps:values(Map)),
   lists:foreach(fun(Pid)-> Pid!Req end, Supervisors),
@@ -137,7 +150,6 @@ handle_cast({env,Env}, State)->
 
 
 handle_info({nodedown, NodeDown}, State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph}) ->
-  io:format("NODEDOWNAHAHAHAHAHAHAHAHAHAHAHAH~n"),
   digraph:del_vertex(GraphNodes, getNodeName(NodeDown)),
   digraph:del_vertex(Graph, getNodeName(NodeDown)),
   display_net(State),
@@ -148,9 +160,8 @@ handle_info({nodedown, NodeDown}, State = #neuron_server_state{supervisors_map =
     X ! 'NODEDOWN'
                 end,ListDown),
   NewMap=maps:from_list(MapList),
-{noreply, State#neuron_server_state{supervisors_map = NewMap}};
-handle_info(Message, State = #neuron_server_state{supervisors_map = Map}) ->
-  io:format("NODEDOWNAHAHAHAHAHAHAHAHAHAHAHAH ~p~n",[Message]).
+{noreply, State#neuron_server_state{supervisors_map = NewMap}}.
+
 
 %% @private
 %% @doc This function is called by a gen_server when it is about to
@@ -250,3 +261,12 @@ getName_only_([String]) ->
             end, String),
   io:format("~p~n", [NewString]),
   NewString.
+checkNodesConnected(CurrNode)->
+  Nodes=nodes(),
+  Node=node(),
+
+  io:format("Nodes: ~p~n", [Nodes]),
+  io:format("Node: ~p~n", [Node]),
+  io:format("CurrNode: ~p~n", [CurrNode]),
+  (lists:all(fun(X)-> (pong == net_adm:ping(X)) end,Nodes)) and (CurrNode==Node)
+.

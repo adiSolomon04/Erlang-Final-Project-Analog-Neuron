@@ -35,7 +35,7 @@
 start(NeuronParameters) ->
   gen_statem:start(?MODULE, [NeuronParameters], []).
 
-start_link(Name_neuron_statem, NeuronParameters) ->
+start_link(_, NeuronParameters) ->
   gen_statem:start_link(?MODULE, [NeuronParameters], []).
 
 %% Set name of statem as global

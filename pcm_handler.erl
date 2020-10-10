@@ -46,16 +46,17 @@ pdm_process_loop(SendingRate)->
 
 pdm_process(Terms, SendingRate) when is_list(Terms)->
   receive
-    {supervisor, Supervisor}-> put(supervisor, Supervisor), pdm_process([], SendingRate);
-    NeuronPid ->
-      put(neuron_pid, NeuronPid),
-      %% Need to call again for pdm_process([], SendingRate)
-      foreachMessageSendToFirstNeuron(Terms,0,0,SendingRate, NeuronPid);
+    {supervisor, Supervisor} -> put(supervisor, Supervisor), pdm_process([], SendingRate);
+
     {test_network, Terms} -> %% Test the Net
       foreachMessageSendToFirstNeuron(Terms,0,0,SendingRate, get(neuron_pid));
     wait ->
       NeuronPid=function_wait(kill_and_recover),
       put(neuron_pid, NeuronPid),
+      foreachMessageSendToFirstNeuron(Terms,0,0,SendingRate, NeuronPid);
+    NeuronPid ->
+      put(neuron_pid, NeuronPid),
+    %% Need to call again for pdm_process([], SendingRate)
       foreachMessageSendToFirstNeuron(Terms,0,0,SendingRate, NeuronPid)
   end;
 pdm_process(FileName, SendingRate)->
@@ -176,14 +177,14 @@ create_wave_list(Start_freq, End_freq, Samp_rate)->
   case (End_freq-Start_freq)*Step of
     Loops when Loops>0 ->
       io:format("~p~n", [Loops]),
-      SinSample = write_list_loop_avg(0, Sine_freq, Phase, 1, Loops, Step, PI2, Clk_freq, Amplitude, case Samp_rate of
+      write_list_loop_avg(0, Sine_freq, Phase, 1, Loops, Step, PI2, Clk_freq, Amplitude, case Samp_rate of
                                                                                            0 -> Samp_rate_ratio;
                                                                                            _ -> Samp_rate
                                                                                          end,[]);
     0 -> io:format("Running 1,000,000 Loops wuth Samp_rate as 1~n"),
-      SinSample= write_list_loop_avg(0, Sine_freq,  Phase, 1, 10000000, Step, PI2, Clk_freq, Amplitude, 1,[]);
+      write_list_loop_avg(0, Sine_freq,  Phase, 1, 10000000, Step, PI2, Clk_freq, Amplitude, 1,[]);
     _ -> io:format("err in Loops number~n"),
-      SinSample = write_list_loop_avg(0, Sine_freq,  Phase, 1, 10000000, Step, PI2, Clk_freq, Amplitude, Samp_rate_ratio,[])
+      write_list_loop_avg(0, Sine_freq,  Phase, 1, 10000000, Step, PI2, Clk_freq, Amplitude, Samp_rate_ratio,[])
   end.
 
 
@@ -350,7 +351,7 @@ write_to_file(Samp, FileName) when Samp<(-32767) ->
 acc_process_appendData(Pid_timing,PidSender,PidPlotGraph) ->
   %%% add open for writing and closing.
 
-  Acc = acc_appendData_loop( Pid_timing,0,PidSender,PidPlotGraph,[]),
+  acc_appendData_loop( Pid_timing,0,PidSender,PidPlotGraph,[]),
   PidPlotGraph!plot,
   io:format("exit acc~n").
 
@@ -397,7 +398,7 @@ msg_process(PidSender) ->
 msgAcc_process(Pid_timing,PidPlotGraph) ->
   %%% add open for writing and closing.
 
-  MsgAcc = msgAcc_loop( Pid_timing,PidPlotGraph,0,[]),
+  msgAcc_loop( Pid_timing,PidPlotGraph,0,[]),
   PidPlotGraph!plot,
   io:format("exit acc~n").
 

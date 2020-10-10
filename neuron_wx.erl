@@ -14,13 +14,13 @@
 %% Will get the pid of server
 %% will send the information on button pressing
 start() ->
-  WX = wx:new(),
+  wx:new(),
 
   %%Fonts
   FontTopHeader = wxFont:new(20, ?wxFONTFAMILY_ROMAN, ?wxFONTSTYLE_NORMAL, ?wxFONTWEIGHT_NORMAL),
   FontHeader = wxFont:new(18, ?wxFONTFAMILY_ROMAN, ?wxFONTSTYLE_NORMAL, ?wxFONTWEIGHT_NORMAL),
   FontSubHeader = wxFont:new(14, ?wxFONTFAMILY_ROMAN, ?wxFONTSTYLE_NORMAL, ?wxFONTWEIGHT_NORMAL),
-  FontInfo = wxFont:new(12, ?wxFONTFAMILY_ROMAN, ?wxFONTSTYLE_NORMAL, ?wxFONTWEIGHT_NORMAL),
+  wxFont:new(12, ?wxFONTFAMILY_ROMAN, ?wxFONTSTYLE_NORMAL, ?wxFONTWEIGHT_NORMAL),
 
   %%Frame and components build
   Frame = wxFrame:new(wx:null(), ?wxID_ANY, "Analog Neuron - Resonator Network"),
@@ -192,7 +192,7 @@ get_message_update() ->
 panelPictureUpdate({Frame,PictureDraw17}, #wx{obj =Panel17} ) ->
   timer:sleep(250),
   {Width, Height} = {wxImage:getWidth(PictureDraw17),wxImage:getHeight(PictureDraw17)},
-  {Width1, Height1} = wxPanel:getSize(Panel17),
+  {_, Height1} = wxPanel:getSize(Panel17),
   %{Width1, Height1} = wxPanel:getSize(Panel17),
   PictureDrawScaled1 = wxImage:scale(PictureDraw17, round(Width*10/11*Height1/Height), round(Height1*10/11)),
   %% display picture
