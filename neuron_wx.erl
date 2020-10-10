@@ -178,6 +178,14 @@ start() ->
   wxWindow:setSizer(Frame, MainSizer),
   wxFrame:show(Frame),
   {wx:get_env()}.
+  %neuron_server:wx_env(wx:get_env()),
+  %register(wx_server, self()),
+  %get_message_update().
+
+get_message_update() ->
+  receive
+    {update, Panel} -> neuron_server:handlePicture({nothing, Panel}, x), get_message_update()
+  end.
 
 
 % upload the picture to the panel

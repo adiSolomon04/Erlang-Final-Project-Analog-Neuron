@@ -10,6 +10,7 @@
 -author("adisolo").
 
 -behaviour(gen_server).
+-compile(export_all).
 
 %% API
 -export([start_link/0, test_networks/1, wx_env/1, launch_network/3]).
@@ -63,10 +64,10 @@ init([]) ->
   wxFrame:show(Frame),
   Panel = wxPanel:new(Frame),
   wxPanel:connect(Panel, paint, [{callback,fun(WxData, _)->
-    neuron_server:handlePicture({nothing,Panel}, WxData)
+    neuron_server:handlePicture(Panel, WxData)
                                            end}]),
-  handlePicture({Env, Frame}, x),
-  {ok, #neuron_server_state{digraph_nodes = digraph:new(), digraph_edges = digraph:new(), env=Env, frame=Frame}}.
+  %wxWindow:refresh(Panel),
+  {ok, #neuron_server_state{digraph_nodes = digraph:new(), digraph_edges = digraph:new(), env=Env, frame=Panel}}.
 
 %% @private
 %% @doc Handling call messages
@@ -89,10 +90,10 @@ handle_call(_Requset, _From, State = #neuron_server_state{}) ->
   {stop, Reason :: term(), NewState :: #neuron_server_state{}}).
 
 handle_cast({launch_network,[single_node, Net_Size, [Node], Frequency_Detect]},
-    State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num, pid2name=Pid2Name}) ->
+    State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num, frame = Panel}) ->
   io:format("here cast1~n"),
   NewSupervisor=neuron_supervisor:start(single_node, Net_Size, [Node], Frequency_Detect),
-  Sup_Name = io_lib:format("supervisor_~p_~pHz",[Num, Frequency_Detect]),
+  Sup_Name = getSupName(Num, Frequency_Detect),%io_lib:format("supervisor_~p_~fHz",[Num, Frequency_Detect]),
   digraph:add_vertex(GraphNodes, getNodeName(Node)),
   digraph:add_vertex(Graph, getNodeName(Node)),
   digraph:add_vertex(Graph, Sup_Name),
@@ -103,22 +104,24 @@ handle_cast({launch_network,[single_node, Net_Size, [Node], Frequency_Detect]},
             {ok, List} -> Map#{Node => List++[NewSupervisor]}
           end,
   io:format("here cast2~n"),
-  create_new_net(State),
-  {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1, pid2name = Pid2Name#{NewSupervisor=>Sup_Name}}};
+  display_net(State),
+  wxWindow:refresh(Panel),
+  {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1}}; %, pid2name = Pid2Name#{NewSupervisor=>Sup_Name}
 handle_cast({launch_network,[four_nodes, Net_Size, Nodes, Frequency_Detect]},
-    State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num, pid2name = Pid2Name}) ->
+    State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num}) -> %, pid2name = Pid2Name
 io:format("handle_cast Nodes: ~p ~n ",[Nodes]),
   NewSupervisor=neuron_supervisor:start(four_nodes, Net_Size, Nodes, Frequency_Detect),
-  Sup_Name=io_lib:format("supervisor_~p_~pHz",[Num, Frequency_Detect]),
+  Sup_Name = getSupName(Num, Frequency_Detect),%io_lib:format("supervisor_~p_~pHz",[Num, Frequency_Detect]),
   lists:foreach(fun(Node) ->
     digraph:add_vertex(GraphNodes, getNodeName(Node)),
     digraph:add_vertex(Graph, getNodeName(Node)),
+    digraph:add_vertex(Graph, Sup_Name),
     digraph:add_edge(Graph, getNodeName(Node), Sup_Name)
-                end,
+end,
     Nodes),
   NewMap=makeMap(Nodes,Map,NewSupervisor,length(Nodes)),
-  create_new_net(State),
-  {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1, pid2name = Pid2Name#{NewSupervisor=>Sup_Name}}};
+  display_net(State),
+  {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1}}; %, pid2name = Pid2Name#{NewSupervisor=>Sup_Name}
 handle_cast(Req={test_network, _}, State = #neuron_server_state{supervisors_map = Map}) ->
   Supervisors =  lists:flatten(maps:values(Map)),
   lists:foreach(fun(Pid)-> Pid!Req end, Supervisors),
@@ -133,10 +136,11 @@ handle_cast({env,Env}, State)->
 %% @doc Handling all non call/cast messages
 
 
-handle_info({nodedown, NodeDown}, State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, pid2name = Pid2Name}) ->
+handle_info({nodedown, NodeDown}, State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph}) ->
   io:format("NODEDOWNAHAHAHAHAHAHAHAHAHAHAHAH~n"),
   digraph:del_vertex(GraphNodes, getNodeName(NodeDown)),
   digraph:del_vertex(Graph, getNodeName(NodeDown)),
+  display_net(State),
   Nodes=maps:keys(Map),
   ListDown= maps:get(NodeDown,Map),
   MapList= lists:map(fun(X)->List= maps:get(X,Map),NewList=List--ListDown,{X,NewList} end,Nodes),
@@ -146,8 +150,7 @@ handle_info({nodedown, NodeDown}, State = #neuron_server_state{supervisors_map =
   NewMap=maps:from_list(MapList),
 {noreply, State#neuron_server_state{supervisors_map = NewMap}};
 handle_info(Message, State = #neuron_server_state{supervisors_map = Map}) ->
-  io:format("NODEDOWNAHAHAHAHAHAHAHAHAHAHAHAH ~p~n",[Message])
-  .
+  io:format("NODEDOWNAHAHAHAHAHAHAHAHAHAHAHAH ~p~n",[Message]).
 
 %% @private
 %% @doc This function is called by a gen_server when it is about to
@@ -184,9 +187,9 @@ makeMap(Nodes,Map,NewSupervisor,N)-> Curr=lists:nth(N,Nodes),NewN=N-1,
   {ok, List} -> Map#{Curr => List++[NewSupervisor]}
   end,makeMap(Nodes,NewMap,NewSupervisor,NewN).
 
-display_net(State=#neuron_server_state{env=Env, frame = Frame})->
+display_net(State=#neuron_server_state{frame = Panel})->
   create_new_net(State),
-  handlePicture({Env, Frame}, x).
+  wxWindow:refresh(Panel).
 
 create_new_net(#neuron_server_state{digraph_nodes = GraphNodes, digraph_edges = Graph})->
   Nodes = digraph:vertices(GraphNodes),
@@ -199,23 +202,23 @@ create_new_net(#neuron_server_state{digraph_nodes = GraphNodes, digraph_edges = 
   graphviz:to_file("network.png", "png"),
   graphviz:delete().
 
-handlePicture({Env, Frame}, _)->
+handlePicture(Panel, _)->
   timer:sleep(200),
-  case Env of
-    nothing -> do_nothing;
-    _ -> wx:set_env(Env)
-  end,
   Picture = wxImage:new("network.png"),
   {Width, Height} = {wxImage:getWidth(Picture),wxImage:getHeight(Picture)},
-  {Width1, Height1} = wxPanel:getSize(Frame),
+  {Width1, Height1} = wxPanel:getSize(Panel),
+
   %{Width1, Height1} = wxPanel:getSize(Panel17),
-  PictureDrawScaled1 = wxImage:scale(Picture, round(Width*Height1/Height), round(Height1)),
+  PictureDrawScaled1 =case Width*Height1/Height-Width1 of
+                        Res when Res<0 -> wxImage:scale(Picture, round(Width*Height1/Height), round(Height1));
+                        _ -> wxImage:scale(Picture, round(Width1), round(Height*Width1/Width))
+                      end,
   %"network17.png"),
   PictureBit = wxBitmap:new(PictureDrawScaled1),
-  DC = wxPaintDC:new(Frame),
+  DC = wxPaintDC:new(Panel),
   wxDC:drawBitmap(DC, PictureBit, {0,0}),
   wxPaintDC:destroy(DC),
-  wxWindow:updateWindowUI(Frame),
+  wxWindow:updateWindowUI(Panel),
   done.
 
 getEdgesList(G)->
@@ -225,9 +228,25 @@ getEdgesList(G)->
 getNodeName(Node) when is_atom(Node) ->
   %% atom to string, without @
   lists:map(fun(X) -> case X of
-                        "@" -> "_";
+                        64 -> 95;
+                        46 -> 95;
                         _ -> X
                       end
-            end,
-  atom_to_list(Node));
+            end, atom_to_list(Node));
 getNodeName(_) -> err.
+
+getSupName(Num, Frequency_Detect) ->
+  io:format("Freq ~p ~p~n", [Frequency_Detect, is_list(Frequency_Detect)]),
+  Freq_no_dots = getName_only_(io_lib:format("~p",[Frequency_Detect])),
+  io_lib:format("supervisor_~p_",[Num])++[Freq_no_dots]++"Hz".
+
+getName_only_([String]) ->
+  io:format("~p~n", [String]),
+  NewString = lists:map(fun(X) -> case X of
+                        64 -> 95;
+                        46 -> 95;
+                        _ -> X
+                      end
+            end, String),
+  io:format("~p~n", [NewString]),
+  NewString.
