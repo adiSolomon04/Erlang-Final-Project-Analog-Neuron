@@ -103,7 +103,7 @@ handle_cast({launch_network,[single_node, Net_Size, [Node], Frequency_Detect]},
             error ->monitor_node(Node, true), Map#{Node => [NewSupervisor]};
             {ok, List} -> Map#{Node => List++[NewSupervisor]}
           end,
-  io:format("here cast2~n"),
+
   display_net(State),
   wxWindow:refresh(Panel),
   {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1}}; %, pid2name = Pid2Name#{NewSupervisor=>Sup_Name}
