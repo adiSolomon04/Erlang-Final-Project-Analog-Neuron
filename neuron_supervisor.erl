@@ -187,7 +187,7 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,Lin
           PidSenderNew!{config, kill_and_recover, self()},
           PidSenderNew! kill_and_recover, %% Waits for a wait message, and than the Pid name
           if Start=/=0, Stop=/=0 ->
-            Samp = pcm_handler:create_wave_list(get(start_freq),get(stop_freq),1),
+            Samp = pcm_handler:create_wave_list(Start,Stop,1),
             {_, SampRemaining}=lists:split(get(pdm_msg_number), Samp),
             PidSenderNew! {test_network, SampRemaining};
             true -> dont_send

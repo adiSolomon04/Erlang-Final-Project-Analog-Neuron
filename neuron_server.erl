@@ -66,7 +66,7 @@ init([]) ->
   wxPanel:connect(Panel, paint, [{callback,fun(WxData, _)->
     neuron_server:handlePicture(Panel, WxData)
                                            end}]),
-  %wxWindow:refresh(Panel),
+  wxWindow:refresh(Panel),
   {ok, #neuron_server_state{digraph_nodes = digraph:new(), digraph_edges = digraph:new(), env=Env, frame=Panel}}.
 
 %% @private
