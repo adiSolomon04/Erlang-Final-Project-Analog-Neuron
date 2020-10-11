@@ -151,12 +151,12 @@ to_dot(#graph{graphId = GraphId, type = Type, graphOptions= _,
    lists:foreach(
       fun({Num, Label, Edges}) ->
          io:format(IODevice, "\tsubgraph cluster_~p{~n\tstyle=filled;~n\tnode [style=filled];~n",[Num]),
+         Edges,
          lists:foreach(
             fun(Edge) ->
                {NodeOne, NodeTwo} = Edge,
                io:format(IODevice, "\t  ~s ~s ~s;~n",[NodeOne, EdgeType, NodeTwo])
-            end,
-            Edges),
+            end, Edges),
          io:format(IODevice, "\t  label = \"~s\";~n\t}~n", [Label]) end,
       Clusters),
 

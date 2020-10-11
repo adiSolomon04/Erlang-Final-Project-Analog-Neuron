@@ -75,7 +75,7 @@ run_python(Function, Args)->
 %% in order to transfer to 'str' in python
 string_to_binary(List) ->
   [Head|Tail] = List,
-  NewList = [list_to_binary(Head)|Tail].
+  [list_to_binary(Head)|Tail].
   %lists:map(
   %  fun(X) -> case is_list(X) of
   %              true -> list_to_binary(X);

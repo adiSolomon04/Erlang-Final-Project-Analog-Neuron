@@ -25,7 +25,7 @@ runOneNwuron() ->
   LeakagePeriodPar = 73,
   LeakageFactorPar = 5,
   NeuronParameters = #{actType => ActType,weight=>Weight,bias=>BiasPar,leakageFactor=>LeakageFactorPar,leakagePeriod =>LeakagePeriodPar},
-  Neuron = neuron_statem:start_link(neuron1,Tid,NeuronParameters),
+  neuron_statem:start_link(neuron1,Tid,NeuronParameters),
   neuron_statem:pidConfig(neuron1,PidIn,PidOut),
   SynBitString = <<1,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0>>,
   neuron_statem:sendMessage(neuron1,S,SynBitString),
@@ -119,11 +119,8 @@ start_resonator_4stage(nonode, _, Tid) ->
     [maps:get(afi23, NeuronName2Pid_map)]),
   neuron_statem:pidConfig(maps:get(afi23,NeuronName2Pid_map), [enable,maps:get(afi22,NeuronName2Pid_map)],
     [maps:get(afi1, NeuronName2Pid_map)]),
-  NeuronName2Pid_map;
-start_resonator_4stage(onenode, Node, Tid) ->
-  do;
-start_resonator_4stage(fournodes, Nodes, Tid) ->
-  do.
+  NeuronName2Pid_map.
+
 
 
 

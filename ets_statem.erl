@@ -69,7 +69,7 @@ callChangeHeir(Name_ets_statem, Heir) ->
 %% @param:    the pid of the calling process
 %%            StartState = backup
 %%            PidHeir -none
-init([Pid_Server,backup,none]) ->
+init([_,backup,none]) ->
   S = self(),
   io:format("here1 ~p" ,[S]),
   {ok, backupState, x};
@@ -137,7 +137,7 @@ etsOwnerState({call,Pid_Server}, {changeHeir,{Heir}},Tid) ->
 %%            {'ETS-TRANSFER',Tid,_,_} - the message that the ets process fell and the Tid
 %% @next_state: etsOwnerState
 %% need to update the Heir of the Tid and open new backup process
-backupState(info, {'ETS-TRANSFER',Tid,_,HeirData}, x) ->
+backupState(info, {'ETS-TRANSFER',Tid,_,_}, x) ->
   %global:unregister_name(Name_ets_statem),
   %global:register_name(HeirData,self()),
   NextStateName = etsOwnerState,
@@ -164,6 +164,4 @@ terminate(_Reason, _StateName, _State = #ets_statem_state{}) ->
 code_change(_OldVsn, StateName, State = #ets_statem_state{}, _Extra) ->
   {ok, StateName, State}.
 
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
+
