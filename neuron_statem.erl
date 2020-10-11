@@ -52,7 +52,6 @@ sendMessage({final,Name_neuron_statem},SendPid,SynBitString,_) ->
 sendMessage({finalAcc,Name_neuron_statem},SendPid,_,Acc) ->
   Name_neuron_statem!{SendPid,Acc};
 sendMessage({msgControl,Name_neuron_statem},SendPid,_,Acc) ->
-  %io:format("Acc~p",[Acc]),
   Name_neuron_statem!{SendPid,Acc};
 sendMessage(Name_neuron_statem,SendPid,SynBitString,_) ->
   gen_statem:cast(Name_neuron_statem,{SendPid,SynBitString}).
@@ -84,7 +83,6 @@ init([{restore,NeuronParametersMap,ReplacePid}]) ->
   {ok, restore_network_config, {NeuronParametersMap,ReplacePid}};
 
 init([NeuronParametersMap]) ->
-  erlang:display(init_neuron),
   % enter the parameters to the ets and record/Parameters
   {ok, network_config, NeuronParametersMap}.
 
@@ -119,7 +117,6 @@ network_config({call,Pid}, {PidGetMsg,PidSendMsg},
       weightPar=Weight,
       biasPar=Bias, leakageFactorPar=LF,
       leakagePeriodPar=LP}) ->
-  erlang:display(config_network),
   ListMsgMap = [{X,[]}||X <- PidGetMsg],
   MsgMap = maps:from_list(ListMsgMap),
   [PidEnabel|EnterPidGetMsg] =PidGetMsg,
@@ -170,7 +167,6 @@ restore_network_config({call,Pid}, {PidGetMsg,PidSendMsg},{#neuron_statem_state{
 
 
 analog_neuron(cast, {stop,AlreadyStop}, #neuron_statem_state{pidOut=PidOut}) ->
-  lists:foreach(fun(X)->io:format("want to stop - ~p~n",[X]),stop(X,[self()|AlreadyStop]), io:format("hello") end,PidOut--AlreadyStop),
   {stop, normal};
 
 analog_neuron(cast, {Pid,SynBitString}, State) ->
@@ -294,7 +290,7 @@ checkReady(Value,_) when Value==[] ->  false;
 checkReady(_,MsgMapIter) -> {_,NewValue,NewMsgMapIter}=maps:next(MsgMapIter),checkReady(NewValue,NewMsgMapIter).
 
 %%% Calculates the output synapses and sends a bit string of these synapses to the next layer.
-calculations(_= #neuron_statem_state{etsTid = _,pidOut=PidOut},_,NumOfStages,N,Output,AccList) when N==NumOfStages+1 -> Bin=my_list_to_binary(Output),%io:format("Bin:  ~p \n", [Bin]),
+calculations(_= #neuron_statem_state{etsTid = _,pidOut=PidOut},_,NumOfStages,N,Output,AccList) when N==NumOfStages+1 -> Bin=my_list_to_binary(Output),
   sendToNextLayer(Bin,AccList,PidOut); %%Bin,;
 calculations(State= #neuron_statem_state{etsTid = _,pidOut=_},InputsMap,NumOfStages,N,Output,AccList)->
   CalcList=calcStage(State,InputsMap,N),NewOutput=Output++[lists:nth(1,CalcList)],NewAccList=AccList++[lists:nth(2,CalcList)], NewN=N+1,

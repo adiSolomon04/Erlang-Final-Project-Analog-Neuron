@@ -10,7 +10,6 @@
 -author("adisolo").
 
 -behaviour(gen_server).
--compile(export_all).
 
 %% API
 -export([start_link/0, test_networks/1, wx_env/1, launch_network/3]).
@@ -92,7 +91,7 @@ handle_call(_Requset, _From, State = #neuron_server_state{}) ->
 %% Handles the launch of a single node network
 handle_cast({launch_network,[single_node, Net_Size, [Node], Frequency_Detect]},
     State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num, frame = Panel}) ->
-  Check=checkNodesConnected(Node,Node),
+  Check=checkNodesConnected([Node],[node()]),
   if
     Check==false ->
       wxMessageDialog:showModal(wxMessageDialog:new(wx:null(), "Wrong Node")),{noreply, State#neuron_server_state{supervisors_map = Map}};
@@ -118,7 +117,7 @@ handle_cast({launch_network,[single_node, Net_Size, [Node], Frequency_Detect]},
 %% Handles the launch of a four node network
 handle_cast({launch_network,[four_nodes, Net_Size, Nodes, Frequency_Detect]},
     State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num}) -> %, pid2name = Pid2Name
-  Check=checkNodesConnected(Nodes,lists:nth(1,Nodes)),
+  Check=checkNodesConnected(Nodes,[node()]),
   if
     Check==false ->
       wxMessageDialog:showModal(wxMessageDialog:new(wx:null(), "Wrong Nodes")),{noreply, State#neuron_server_state{supervisors_map = Map}};
@@ -186,16 +185,10 @@ code_change(_OldVsn, State = #neuron_server_state{}, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-gather([Pid|Pids]) ->
-  receive
-    {done_testing, Pid} -> gather(Pids)
-  end;
-gather([])-> done.
-
 makeMap(_,Map,_,0)-> Map;
 makeMap(Nodes,Map,NewSupervisor,N)-> Curr=lists:nth(N,Nodes),NewN=N-1,
   NewMap=case maps:find(Curr, Map) of
-  error ->io:format("Node: ~p ~n ",[Curr]),monitor_node(Curr, true), Map#{Curr => [NewSupervisor]};
+  error ->monitor_node(Curr, true), Map#{Curr => [NewSupervisor]};
   {ok, List} -> Map#{Curr => List++[NewSupervisor]}
   end,makeMap(Nodes,NewMap,NewSupervisor,NewN).
 
@@ -248,7 +241,6 @@ getNodeName(Node) when is_atom(Node) ->
 getNodeName(_) -> err.
 
 getSupName(Num, Frequency_Detect) ->
-  io:format("Freq ~p ~p~n", [Frequency_Detect, is_list(Frequency_Detect)]),
   Freq_no_dots = getName_only_(io_lib:format("~p",[Frequency_Detect])),
   io_lib:format("supervisor_~p_",[Num])++[Freq_no_dots]++"Hz".
 
@@ -261,6 +253,4 @@ getName_only_([String]) ->
             end, String),
   NewString.
 checkNodesConnected(Nodes,CurrNode)->
-  Node=node(),
-  (lists:all(fun(X)-> (pong == net_adm:ping(X)) end,Nodes)) and (CurrNode==Node)
-.
+  (lists:all(fun(X)-> (pong == net_adm:ping(X)) end,Nodes--CurrNode)).

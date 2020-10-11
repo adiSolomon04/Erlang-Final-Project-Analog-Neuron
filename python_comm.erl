@@ -8,8 +8,7 @@
 %%%-------------------------------------------------------------------
 -module(python_comm).
 -author("adisolo").
--compile(export_all).
--export([plot_graph/2]).
+-export([plot_graph/2, plot_graph_process/3]).
 
 %%%===================================================================
 %%% API
@@ -30,22 +29,22 @@ plot_graph(Function, Args)->
 
 %% spawn a process which
 plot_graph_process(Function_Append,Function_Plot,Args_Plot)->
-  io:format("gotr hereeeeeeeeeeeeeee"),
   {ok, CurrentDirectory} = file:get_cwd(),
   {ok, P}= python:start([
     {python_path, CurrentDirectory},
     {python, "python3"}]),
+  receive
+    {start_freq, StartFreq} -> python:call(P, graph_handler, setStartFreq,[StartFreq])
+  end,
   plot_graph_process_loop(Function_Append,Function_Plot,Args_Plot,P).
 
 
 plot_graph_process_loop(Function_Append,Function_Plot,Args_Plot,P)->
   receive
-    plot -> io:format("plot~n"),python:call(P, graph_handler, Function_Plot,Args_Plot);
-    List ->io:format("append~n"),python:call(P, graph_handler, Function_Append, [List]),
+    plot -> python:call(P, graph_handler, Function_Plot,Args_Plot);
+    List ->python:call(P, graph_handler, Function_Append, [List]),
       plot_graph_process_loop(Function_Append,Function_Plot,Args_Plot,P)
   end.
-
-
 %%%===================================================================
 %%%      opening a Python instance erl-port
 %%%===================================================================
@@ -76,13 +75,6 @@ run_python(Function, Args)->
 string_to_binary(List) ->
   [Head|Tail] = List,
   [list_to_binary(Head)|Tail].
-  %lists:map(
-  %  fun(X) -> case is_list(X) of
-  %              true -> list_to_binary(X);
-  %              _ -> X
-  %            end
-  %  end
-  %, List).
 
 %%%===================================================================
 %%% Testing Transfer Time python

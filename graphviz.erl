@@ -108,15 +108,12 @@ graph_server(Graph) ->
 
 % -- Implementation
 add_cluster_server(Graph = #graph{graphId = GraphId, cluster=Clusters, numClusters=Num},{Label, Edges}) ->
-   io:format("Add cluster ~s to graph ~s !~n",[Label, GraphId]),
    Graph#graph{cluster =Clusters++[{Num, Label, Edges}], numClusters = Num+1}.
 
 add_cluster_nodes_server(Graph = #graph{graphId = GraphId, cluster_nodes = ClNodes, numClusters=Num}, {Label, Nodes}) ->
-   io:format("Add cluster nodes ~s to graph ~s !~n",[Label, GraphId]),
    Graph#graph{cluster_nodes =ClNodes++[{Num, Label, Nodes}], numClusters = Num+1}.
 
 add_node(Graph = #graph{graphId = GraphId, nodes=Nodes}, Id) ->
-   io:format("Add node ~s to graph ~s !~n",[Id, GraphId]),
    Graph#graph{nodes=Nodes++[Id]}.
 
 set_shapes(Graph=#graph{shapes = ShapesMap}, Shape, Nodes) when is_list(Nodes) ->
@@ -134,7 +131,6 @@ set_shapes(Graph=#graph{shapes = ShapesMap}, Shape, Node) ->
 
 
 add_edge(Graph = #graph{graphId = GraphId, edges =Edges}, NodeOne, NodeTwo) ->
-   io:format("Add edge ~s -> ~s to graph ~s !~n", [NodeOne, NodeTwo, GraphId]),
    Graph#graph{edges= Edges ++ [{NodeOne, NodeTwo}]}.
 
 to_dot(#graph{graphId = GraphId, type = Type, graphOptions= _,
@@ -151,7 +147,6 @@ to_dot(#graph{graphId = GraphId, type = Type, graphOptions= _,
    lists:foreach(
       fun({Num, Label, Edges}) ->
          io:format(IODevice, "\tsubgraph cluster_~p{~n\tstyle=filled;~n\tnode [style=filled];~n",[Num]),
-         Edges,
          lists:foreach(
             fun(Edge) ->
                {NodeOne, NodeTwo} = Edge,
@@ -189,7 +184,6 @@ to_dot(#graph{graphId = GraphId, type = Type, graphOptions= _,
       Edges
    ),
 
-   io:format("map~p~n", [ShapesMap]),
    % set shapes
    lists:foreach(
       fun({Shape, Nodes}) ->

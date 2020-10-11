@@ -71,7 +71,6 @@ callChangeHeir(Name_ets_statem, Heir) ->
 %%            PidHeir -none
 init([_,backup,none]) ->
   S = self(),
-  io:format("here1 ~p" ,[S]),
   {ok, backupState, x};
 
 %% calls from start_link

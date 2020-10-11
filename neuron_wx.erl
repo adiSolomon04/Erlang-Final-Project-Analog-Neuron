@@ -2,9 +2,8 @@
 -author("adisolo").
 
 %% API
--export([start/0, handleButtonStart/2]).
+-export([start/0]).
 -include_lib("wx/include/wx.hrl").
--compile(export_all).
 
 -define(SERVER, neuron_server).
 -record(data_launch, {net_size, net_conc, text_nodes, text_freq}).
@@ -172,20 +171,9 @@ start() ->
                                               end}]),
 
 
-  %% Assign to 3
-  %%wxSizer:add(MainSizerBottom, TextOutput, [{flag, ?wxALL bor ?wxALIGN_CENTRE }, {border, 8}]),
-
   wxWindow:setSizer(Frame, MainSizer),
   wxFrame:show(Frame),
   {wx:get_env()}.
-  %neuron_server:wx_env(wx:get_env()),
-  %register(wx_server, self()),
-  %get_message_update().
-
-get_message_update() ->
-  receive
-    {update, Panel} -> neuron_server:handlePicture({nothing, Panel}, x), get_message_update()
-  end.
 
 
 % upload the picture to the panel
@@ -203,17 +191,6 @@ panelPictureUpdate({Frame,PictureDraw17}, #wx{obj =Panel17} ) ->
   wxWindow:updateWindowUI(Frame),
   ok.
 
-
-updatePicture(PictureDraw, PicturePanel, Env) ->
-  wx:set_env(Env),
-  {Width, Height} = wxPanel:getSize(PicturePanel),
-  PictureDrawScaled = wxImage:scale(PictureDraw, round(Width), round(Height)),
-  %% display picture
-  Picture = wxBitmap:new(PictureDrawScaled),
-  DC = wxPaintDC:new(PicturePanel),
-  wxDC:drawBitmap(DC, Picture, {0,0}),
-  wxPaintDC:destroy(DC),
-  ok.
 
 handleRBNodes(#wx{userData = Record}, _) ->
   case Record#data_rb_nodes.atom of
@@ -273,16 +250,3 @@ get_int(List_Or_Num)->
   catch
     error:_ -> error
   end.
-
-
-%% NOT USED
-handleButtonStart(WxData,_)->
-  %Get the userdata
-  Data=WxData#wx.userData,
-  wx:set_env(Data),
-  %FilePicker = Data#data.file,
-  %Use the info
-  Frame = wxFrame:new(wx:null(), ?wxID_ANY, "Print"),
-  Text="hi",%%io_lib:format("The file is: ~p~n", [wxFilePickerCtrl:getPath(FilePicker)]),
-  wxStaticText:new(Frame, ?wxID_ANY, Text),
-  wxFrame:show(Frame).
