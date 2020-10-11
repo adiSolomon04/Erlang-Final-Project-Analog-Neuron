@@ -164,6 +164,4 @@ terminate(_Reason, _StateName, _State = #ets_statem_state{}) ->
 code_change(_OldVsn, StateName, State = #ets_statem_state{}, _Extra) ->
   {ok, StateName, State}.
 
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
+

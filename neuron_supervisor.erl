@@ -82,7 +82,7 @@ init(Node_Conc, Net_Size, Nodes, Frequency_Detect)->
                put(pid_msg,Pid),
                Pid
            end,
-  io:format("pid_msg ~p~n",[PidMsg]),
+
 
   %% ====================
   %% Build Net
@@ -91,8 +91,6 @@ init(Node_Conc, Net_Size, Nodes, Frequency_Detect)->
                          4  -> neuron_supervisor:start4neurons(Node_Conc, Nodes, Tids);
                          17 -> neuron_supervisor:start17neurons(Node_Conc, Nodes, Tids)
                        end,
-  %Samp = pcm_handler:create_wave_list(StartFreq,StopFreq,1),
-  %PidSender!{test_network, Samp},
 
   %% ====================
   put(pdm_msg_number,0),
@@ -108,10 +106,11 @@ init(Node_Conc, Net_Size, Nodes, Frequency_Detect)->
     {pdm_msg_number,0},{start_freq, not_started},{stop_freq, not_started}]),
   supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts,HeirEts,HeirPid).
 
+%% The main function, the supervisor process receives different messages and calls the appropriate functions to handle the situation
 supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts,HeirEts,HeirPid)->
   receive
     {'DOWN', _, process, _, normal}->  exit(HeirPid,kill),nothing;
-    'NODEDOWN'->checkNodesConnected(Nodes),io:format("ERANNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNAHAHAHAHAH~n"), exit(PidTiming, kill_and_start_over),
+    'NODEDOWN'->checkNodesConnected(Nodes),exit(PidTiming, kill_and_start_over),
       exit(PidSender, kill_and_start_over),
       exit(PidPlotGraph, kill_and_start_over),
       exit(PidAcc, kill_and_start_over),
@@ -262,17 +261,6 @@ protectionPid()->
       [{start_freq, StartFreq}] = ets:lookup(HeirEts,start_freq), [{stop_freq, StopFreq}] =  ets:lookup(HeirEts,stop_freq),
       [{frequency_Detect,Frequency_Detect}] = ets:lookup(HeirEts,frequency_Detect),
 
-      %====adi
-      %{'ETS-TRANSFER',HeirEts,_,_}->PidTiming=ets:lookup(HeirEts,pidTiming),PidSender=ets:lookup(HeirEts,pidSender),
-      %PidPlotGraph=ets:lookup(HeirEts,pidPlotGraph),PidAcc=ets:lookup(HeirEts,pidAcc),PidMsg=ets:lookup(HeirEts,pidMsg),NeuronName2Pid_map=ets:lookup(HeirEts,neuronName2Pid_map),
-      %LinkedPid=ets:lookup(HeirEts,linkedPid),Nodes=ets:lookup(HeirEts,nodes),Tids=ets:lookup(HeirEts,tids),
-      %EtsOwnerName=ets:lookup(HeirEts,etsOwnerName),EtsBackupName=ets:lookup(HeirEts,etsBackupName),OpenEts=ets:lookup(HeirEts,openEts),
-      %Net_Size=ets:lookup(HeirEts,netSize),put(pdm_msg_number,ets:lookup(HeirEts,pdmMsgNumber)),put(net_size, Net_Size),
-      %put(freq, ets:lookup(HeirEts,freq)),
-      %put(freq_detect, ets:lookup(HeirEts,freqDetect)),
-
-
-
       io:format("PidPlotGraph~p~n",[PidPlotGraph]),
       put(net_size, Net_Size),
       put(start_freq, StartFreq),
@@ -294,11 +282,6 @@ protectionPid()->
       ets:setopts(HeirEts,{heir, HeirPid, 'SupervisorDown'}),
       supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,NewLinkedPid,Nodes,Tids,MapNodesToPidOwnersNew,OpenEts,HeirEts,HeirPid)
   end.
-  %%,receive
-  %%  Message={'EXIT',_, _} -> %% from linked pid (linked to all)
-  %%    shell!Message,
-  %%    exit(die_bitch)
-  %%end.
 
 %% pdm to sleep.
 %% 17 process destroy.
@@ -683,14 +666,6 @@ supervisorEran(NodeName)->
   erlang:monitor(process,PidAcc),
   ListPid = maps:values(NeuronName2Pid_map),
   {LinkedPid,_} = spawn_monitor(fun()->lists:foreach(fun(X)->link(X)end,ListPid), receive Y->Y end end),
-  %2
-  %[FirstPid|RestListofPid] = ListPid,
-  %StartLIstofPid=lists:sublist(ListPid,lists:flatlength(RestListofPid)),
-  %erlang:monitor(process,FirstPid),
-  %lists:foreach(fun({X,Y})->
-    %1
-  %lists:foreach(fun(X)->monitor(process,X)end,maps:values(NeuronName2Pid_map)),
-  io:format("@@@@@@@@@@@@@@@@@@@@~p~n",[{PidTiming,PidSender,PidPlotGraph,PidAcc,NeuronName2Pid_map}]),
   supervisorEranLoop(NodeName,Pid_Server,EtsOwnerName,PidEtsOwner,EtsBackupName,PidBackup,PidTiming,PidSender,PidPlotGraph,PidAcc,NeuronName2Pid_map,LinkedPid,Tid).
 
 supervisorEranLoop(NodeName,Pid_Server,EtsOwnerName,PidEtsOwner,EtsBackupName,PidBackup,PidTiming,PidSender,PidPlotGraph,PidAcc,NeuronName2Pid_map,LinkedPid,Tid)->
@@ -708,114 +683,13 @@ supervisorEranLoop(NodeName,Pid_Server,EtsOwnerName,PidEtsOwner,EtsBackupName,Pi
                             supervisorEranLoop(NodeName,Pid_Server,EtsOwnerName,PidBackup,EtsBackupName,PidBackNew,PidTiming,PidSender,PidPlotGraph,PidAcc,NeuronName2Pid_map,LinkedPid,Tid);
         Pid == LinkedPid ->
                     NewNeuronName2Pid_map = rpc:call(NodeName,neuron_supervisor,fix4neurons,[NodeName,PidSender,PidAcc,PidEtsOwner,Tid,NeuronName2Pid_map]),
-          io:format("~p~n",[NewNeuronName2Pid_map]),
                             ListPid = maps:values(NewNeuronName2Pid_map),
                             {NewLinkedPid,_} = spawn_monitor(fun()->lists:foreach(fun(X)->link(X)end,ListPid), receive Y->Y end end),
                             supervisorEranLoop(NodeName,Pid_Server,EtsOwnerName,PidEtsOwner,EtsBackupName,PidBackup,PidTiming,PidSender,PidPlotGraph,PidAcc,NewNeuronName2Pid_map,NewLinkedPid,Tid);
 
         true -> fix
       end
-  %PidPlotGraph = spawn_link(python_comm,plot_graph_process,[append_acc_vs_freq,plot_acc_vs_freq_global,[Start_freq]])
   end.
-
-
-%%fix4neurons(NodeName,PidSender,PidAcc,PidEtsOwner,Tid,NeuronName2Pid_map) ->
-%%  put(pid_data_sender,PidSender),
-%%  put(pid_data_getter,PidAcc),
-%%  PidAcc !zeroCounter,
-%%  PidSender!wait,
-%%  io:format("1~n"),
-%%  {NewNeuronName2Pid_map,PidOldPidNewTuples}=fix_resonator_4stage(nonode, nonode, Tid,NeuronName2Pid_map),
-%%  io:format("2~n"),
-%%  lists:foreach(fun({Old,New})->rpc:call(NodeName,ets_statem,callChangePid,[PidEtsOwner,Old,New]) end,PidOldPidNewTuples),
-%%  io:format("3~n"),
-%%  neuron_statem:sendMessage(maps:get(afi1,NewNeuronName2Pid_map),maps:get(afi23,NewNeuronName2Pid_map),<<1>>,x),
-%%  io:format("4~n"),
-%%  PidSender!{stopWait,maps:get(afi1,NewNeuronName2Pid_map)}, %%dead lock???,
-%%  io:format("5~n"),
-%%
-%%  NewNeuronName2Pid_map.
-%%
-%%
-%%fix_resonator_4stage(nonode, _, Tid,NeuronName2Pid_mapOLD) ->
-%%  Neurons = [{afi1, #neuron_statem_state{etsTid=Tid,weightPar=[11,-9], biasPar=-1}},
-%%    {afi21, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-%%    {afi22, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-%%    {afi23, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}}], % afi24, afi25, afi26, afi27,
-%%  % afb1, afb2, afb3, afb4,
-%%  % afi31, afi32, afi33, afi34],
-%%  io:format("~p",[Neurons]),
-%%  io:format("1.1~n"),
-%%
-%%  NeuronName2Pid=lists:map(fun({Name, Record}) -> {ok,Pid}=neuron_statem:start_link(Name, {restore,Record,maps:get(Name,NeuronName2Pid_mapOLD)}), {Name, Pid} end, Neurons),
-%%  %list neuron name -> pid
-%%  NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
-%%  PidOldPidNewTuples = [{maps:get(X,NeuronName2Pid_mapOLD),maps:get(X,NeuronName2Pid_map)}||X <-maps:keys(NeuronName2Pid_map)],
-%%  %todo:neuron_statem:pid_config(prev, next).
-%%  io:format("1.2~n"),
-%%
-%%  neuron_statem:pidConfig(maps:get(afi1,NeuronName2Pid_map), [enable,get(pid_data_sender),maps:get(afi23,NeuronName2Pid_map)],
-%%    [maps:get(afi21, NeuronName2Pid_map),{finalAcc,get(pid_data_getter)}]),
-%%  neuron_statem:pidConfig(maps:get(afi21,NeuronName2Pid_map), [enable,maps:get(afi1,NeuronName2Pid_map)],
-%%    [maps:get(afi22, NeuronName2Pid_map)]),
-%%  neuron_statem:pidConfig(maps:get(afi22,NeuronName2Pid_map), [enable,maps:get(afi21,NeuronName2Pid_map)],
-%%    [maps:get(afi23, NeuronName2Pid_map)]),
-%%  neuron_statem:pidConfig(maps:get(afi23,NeuronName2Pid_map), [enable,maps:get(afi22,NeuronName2Pid_map)],
-%%    [maps:get(afi1, NeuronName2Pid_map)]),
-%%  {NeuronName2Pid_map,PidOldPidNewTuples}.
-%%
-%%%%%fix_resonator_4stage(nonode, _, Tid,Pid,NeuronName2Pid_map) ->
-%%%%%  Pid2NeuronName_map=maps:from_list([{Y,X}||{X,Y}<-maps:to_list(NeuronName2Pid_map)]),
-%%%%%  %%%% get the pid of the falling process
-%%%%% Name = maps:get(Pid,Pid2NeuronName_map),
-%%%%%  Neurons = [{afi1, #neuron_statem_state{etsTid=Tid,weightPar=[11,-9], biasPar=-1}},
-%%%%%    {afi21, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-%%%%%    {afi22, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}},
-%%%%%    {afi23, #neuron_statem_state{etsTid=Tid,weightPar=[10], biasPar=-5}}], % afi24, afi25, afi26, afi27,
-%%%%%  NeuronOldMap = maps:from_list(Neurons),
-%%%%%  %%%% send other neurons to hold
-%%%%%  lists:foreach(fun(X,Name) -> if X == Name ->doNothing; true-> neuron_statem:holdState(X) end end, maps:keys(NeuronOldMap)),
-%%%%%  %%%% get neuron Record
-%%%%%    Record = maps:get(Name,NeuronOldMap),
-%%%%%  {ok,PidNew}=neuron_statem:start_link(Name, Tid, {restore,Record,Pid}), {Name, PidNew}
-%%%%%
-%%%%%  NeuronName2Pid=lists:map(fun({Name, Record}) -> {ok,Pid}=neuron_statem:start_link(Name, Tid, Record), {Name, Pid} end, Neurons),
-%%%%%  %list neuron name -> pid
-%%%%%  NeuronName2Pid_map = maps:from_list(NeuronName2Pid),
-%%%%%  %todo:neuron_statem:pid_config(prev, next).
-%%%%%  neuron_statem:pidConfig(maps:get(afi1,NeuronName2Pid_map), [enable,get(pid_data_sender),maps:get(afi23,NeuronName2Pid_map)],
-%%%%%    [maps:get(afi21, NeuronName2Pid_map),{finalAcc,get(pid_data_getter)}]),
-%%%%%  neuron_statem:pidConfig(maps:get(afi21,NeuronName2Pid_map), [enable,maps:get(afi1,NeuronName2Pid_map)],
-%%%%%    [maps:get(afi22, NeuronName2Pid_map)]),
-%%%%%  neuron_statem:pidConfig(maps:get(afi22,NeuronName2Pid_map), [enable,maps:get(afi21,NeuronName2Pid_map)],
-%%%%%    [maps:get(afi23, NeuronName2Pid_map)]),
-%%%%%  neuron_statem:pidConfig(maps:get(afi23,NeuronName2Pid_map), [enable,maps:get(afi22,NeuronName2Pid_map)],
-%%%%%    [maps:get(afi1, NeuronName2Pid_map)]),
-%%%%%  NeuronName2Pid_map;
-
-
-
-%%spawn_neuron(Name) -> Pid = spawn_link(Node, neuron_statem, start_link/3, [Tid, #{}]), {Node, Tid})
-
-%%%===================================================================
-%%% Old functions - adi
-%%%===================================================================
-
-
-
-%supervisor()->
-%  receive
-%    {'EXIT',FromPid, Reason} ->
-%      case get(is_fix_mode) of
-%        Bool when Bool==false -> rpc:pmap({'neuron_supervisor','fix_mode_node'}, [], maps:to_list(get(pid_per_node)));
-%        true -> already_in_fix_mode
-%      end,
-%      PidList = gatherPid([{FromPid, Reason}]),
-%      lists:map(restoreNeuron/1, PidList)
-%  ;
-%    {nodedown, Node} -> need_restart
-%
-%  end.
 
 %% Get all of the Pid that fell.
 % Returns list of {Pid, Reason} that fell.
@@ -839,8 +713,6 @@ gatherTid([], List) -> List.
 %% Returns a list of {Node, [{Pid,{Node,Tid}} ..]}
 createLayerNeurons({Node, LayerSize, Tid})->
   NeuronParameters = lists:seq(1, LayerSize),
-  % Todo: get the neuron parameters in a map/record and put in the list.
-  % Todo: -record(neuron_statem_state, {etsTid,actTypePar,weightPar,biasPar,leakageFactorPar,leakagePeriodPar,pidIn,pidOut}).
   {Node, lists:map(fun(_)-> {spawn_link(Node, neuron_statem, start_link, [Tid, #{}]), {Node, Tid}}  end, NeuronParameters)}.
 
 %% spawns and monitors a process at node NODE.
@@ -858,10 +730,6 @@ net_connect(Prev,[Curr={Node, ListNeurons}, Next|NextNeuronListPerNode])->
   lists:foreach(fun(Pid) -> rpc:call(Node, neuron_statem, net_connect, [Pid, {Prev,Next}]) end, ListNeurons),
   net_connect(Curr, Next, NextNeuronListPerNode).
 net_connect(_, _, [])-> done.
-
-  % Todo: add net_connect API of a gen_statem:cast.
-  % Todo: Something like - neuron_statem:net_connect(Pid, Pids)-> gen_statem:cast(Pid, Pids).
-  % Todo: change receiving on neuron_statem:networking to {Node, ListPids}.
 
 %% returns list of {Node, [Pid,...]}
 remove_info(List) ->
@@ -899,33 +767,3 @@ test_monitor()->
     Message -> whereis(shell)!Message, test_monitor()
   end.
 
-
-%%%debugResonator_4stage() ->
-%%%  Tid = ets:new(neurons_data,[set,public]),
-%%%  Self = self(),
-%%%  put(pid_data_sender,Self),
-%%%  NeuronName2Pid_map = start_resonator_4stage(nonode,nonode),
-%%%  receive
-%%%  after 10000 -> io:format("\n\nend wait ~p\n\n",[NeuronName2Pid_map])
-%%%  end,
-%%%  io:format("finish config!!!!!!!!!!!!!"),
-%%%  neuron_statem:sendMessage(maps:get(afi1,NeuronName2Pid_map),get(pid_data_sender),<<1>>,x),
-%%%  receive
-%%%    X -> io:format("1.got ------  ~p\n",[X])
-%%%  after 1000 -> io:format("1.not got\n")
-%%%  end,
-%%%  neuron_statem:sendMessage(maps:get(afi1,NeuronName2Pid_map),maps:get(afi23,NeuronName2Pid_map),<<1>>,x),
-%%%  receive
-%%%    Y -> io:format("2.got ------  ~p\n",[Y])
-%%%  after 1000 -> io:format("2.not got\n")
-%%%  end,
-%%%  neuron_statem:sendMessage(maps:get(afi1,NeuronName2Pid_map),get(pid_data_sender),<<1>>,x),
-%%%  receive
-%%%    Z -> io:format("3.got ------  ~p\n",[Z])
-%%%  after 1000 -> io:format("3.not got\n")
-%%%  end,
-%%%  neuron_statem:sendMessage(maps:get(afi1,NeuronName2Pid_map),get(pid_data_sender),<<0>>,x),
-%%%  receive
-%%%    K-> io:format("3.got ------  ~p\n",[K])
-%%%  after 1000 -> io:format("3.not got\n")
-%%%  end.

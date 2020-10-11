@@ -89,11 +89,10 @@ handle_call(_Requset, _From, State = #neuron_server_state{}) ->
   {noreply, NewState :: #neuron_server_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #neuron_server_state{}}).
 
+%% Handles the launch of a single node network
 handle_cast({launch_network,[single_node, Net_Size, [Node], Frequency_Detect]},
     State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num, frame = Panel}) ->
   Check=checkNodesConnected(Node,Node),
-  io:format("Node: ~p~n",[Node]),
-  io:format("Check: ~p~n",[Check]),
   if
     Check==false ->
       wxMessageDialog:showModal(wxMessageDialog:new(wx:null(), "Wrong Node")),{noreply, State#neuron_server_state{supervisors_map = Map}};
@@ -114,12 +113,12 @@ handle_cast({launch_network,[single_node, Net_Size, [Node], Frequency_Detect]},
   display_net(State),
   wxWindow:refresh(Panel),
   {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1}}
-  end;%, pid2name = Pid2Name#{NewSupervisor=>Sup_Name}
+  end;
+
+%% Handles the launch of a four node network
 handle_cast({launch_network,[four_nodes, Net_Size, Nodes, Frequency_Detect]},
     State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num}) -> %, pid2name = Pid2Name
   Check=checkNodesConnected(Nodes,lists:nth(1,Nodes)),
-  io:format("Nodes17: ~p~n",[Nodes]),
-  io:format("Check17: ~p~n",[Check]),
   if
     Check==false ->
       wxMessageDialog:showModal(wxMessageDialog:new(wx:null(), "Wrong Nodes")),{noreply, State#neuron_server_state{supervisors_map = Map}};
@@ -254,19 +253,14 @@ getSupName(Num, Frequency_Detect) ->
   io_lib:format("supervisor_~p_",[Num])++[Freq_no_dots]++"Hz".
 
 getName_only_([String]) ->
-  io:format("~p~n", [String]),
   NewString = lists:map(fun(X) -> case X of
                         64 -> 95;
                         46 -> 95;
                         _ -> X
                       end
             end, String),
-  io:format("~p~n", [NewString]),
   NewString.
 checkNodesConnected(Nodes,CurrNode)->
   Node=node(),
-  io:format("Nodes: ~p~n", [Nodes]),
-  io:format("Node: ~p~n", [Node]),
-  io:format("CurrNode: ~p~n", [CurrNode]),
   (lists:all(fun(X)-> (pong == net_adm:ping(X)) end,Nodes)) and (CurrNode==Node)
 .
