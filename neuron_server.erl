@@ -10,6 +10,7 @@
 -author("adisolo").
 
 -behaviour(gen_server).
+-include_lib("wx/include/wx.hrl").
 
 %% API
 -export([start_link/0, test_networks/1, wx_env/1, launch_network/3]).
@@ -60,6 +61,8 @@ init([]) ->
   graphviz:to_file("network.png", "png"),
   graphviz:delete(),
   Frame = wxFrame:new(wx:null(), 1, "Launched Networks and Nodes"),
+  wxWindow:setClientSize(Frame, {500, 500}),
+  wxWindow:centerOnParent(Frame, [{dir,?wxVERTICAL}]),
   wxFrame:show(Frame),
   Panel = wxPanel:new(Frame),
   wxPanel:connect(Panel, paint, [{callback,fun(WxData, _)->
