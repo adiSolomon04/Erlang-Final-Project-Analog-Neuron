@@ -110,7 +110,7 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,Lin
       exit(HeirPid, kill_and_start_over),
       lists:foreach(fun({{_,PidEtsOwner,PidBackup},_}) ->  exit(PidEtsOwner, kill_and_start_over),exit(PidBackup, kill_and_start_over) end , OpenEts),
       flushKillMSG();
-    MessageDown={'DOWN', _, process, Pid, Why}->
+    {'DOWN', _, process, Pid, _}->
       Check=checkNodesConnected(Nodes),
       if
         Check==false -> exit(PidTiming, kill_and_start_over),
@@ -280,6 +280,7 @@ start4neurons(Resonator_options,Nodes, Tids) ->
   NeuronName2Pid_map=  start_resonator_4stage(Resonator_options, Nodes, Tids),
   neuron_statem:sendMessage(maps:get(afi1,NeuronName2Pid_map),maps:get(afi23,NeuronName2Pid_map),<<1>>,x),
   get(pid_data_sender) ! {config, maps:get(afi1,NeuronName2Pid_map), self()},
+  erlang:display("network configured"),
   NeuronName2Pid_map.
 
 
@@ -287,6 +288,7 @@ start17neurons(Node_Conc,Nodes, Tids) ->
   NeuronName2Pid_map=  start_resonator_17stage(Node_Conc, Nodes, Tids),
   neuron_statem:sendMessage(maps:get(afi11,NeuronName2Pid_map),maps:get(afi14,NeuronName2Pid_map),<<1>>,x),
   get(pid_data_sender) ! {config, maps:get(afi11,NeuronName2Pid_map), self()},
+  erlang:display("network configured"),
   NeuronName2Pid_map.
 
 %%%===================================================================

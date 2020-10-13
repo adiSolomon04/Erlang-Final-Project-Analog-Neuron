@@ -167,6 +167,7 @@ restore_network_config({call,Pid}, {PidGetMsg,PidSendMsg},{#neuron_statem_state{
 
 
 analog_neuron(cast, {stop,AlreadyStop}, #neuron_statem_state{pidOut=PidOut}) ->
+  lists:foreach(fun(X)->stop(X,[self()|AlreadyStop]) end,PidOut--AlreadyStop),
   {stop, normal};
 
 analog_neuron(cast, {Pid,SynBitString}, State) ->

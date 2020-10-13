@@ -45,7 +45,6 @@ pdm_process_loop(SendingRate)->
 
 foreachMessageSendToFirstNeuron([],_,_,_, NeuronPid)->
   neuron_statem:stop(NeuronPid,[]),
-  os:cmd("notify-send Task complete_succesfully"),
   sccefully_send_all_message;
 foreachMessageSendToFirstNeuron([Head|Tail],Rand_gauss_var,SendingRateCounter,SendingRate, NeuronPid)->
   if SendingRateCounter rem 100 == 0, SendingRateCounter =/= 0->
@@ -302,7 +301,7 @@ timing_process(Pid_wx)->
 timing_loop(Pid, Time)->
   receive
     {X,_} -> case timer:now_diff(erlang:timestamp(), Time) of
-              Diff when Diff >1000000 -> io:format("~p 1 second passed~p~n",[X,Diff]), timing_loop(Pid, erlang:timestamp());
+              Diff when Diff >60000000 -> io:format("1 minute passed, still proccesing~n"), timing_loop(Pid, erlang:timestamp());
              _ -> timing_loop(Pid, Time)
          end
   end.

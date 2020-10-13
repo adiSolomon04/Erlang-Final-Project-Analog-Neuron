@@ -16,8 +16,8 @@
 
 %% Spawn a python instance for graph plotting.
 %% Function is:
-%% plot_acc_vs_freq_fromlist   Args=[file_data_name, start_freq, list]
-%% plot_val_vs_time_fromlist   Args=[file_data_name, list]
+%% plot_val_vs_freq_global   Args=[file_data_name, start_freq]
+%% plot_acc_vs_time_global   Args=[file_data_name]
 
 %% NOT USED
 %% plot_acc_vs_freq   Args=[file_data_name, start_freq]
@@ -34,15 +34,21 @@ plot_graph_process(Function_Append,Function_Plot,Args_Plot)->
     {python_path, CurrentDirectory},
     {python, "python3"}]),
   receive
-    {start_freq, StartFreq} -> python:call(P, graph_handler, setStartFreq,[StartFreq])
+    {start_freq, StartFreq} -> python:call(P, graph_handler, set_start_freq,[StartFreq])
   end,
   plot_graph_process_loop(Function_Append,Function_Plot,Args_Plot,P).
 
 
 plot_graph_process_loop(Function_Append,Function_Plot,Args_Plot,P)->
   receive
-    plot -> python:call(P, graph_handler, Function_Plot,Args_Plot);
-    List ->python:call(P, graph_handler, Function_Append, [List]),
+    plot -> erlang:display("network done calculating"),
+      os:cmd("notify-send Task complete_succesfully"),
+      python:call(P, graph_handler, Function_Plot,Args_Plot);
+    List when is_list(List) ->
+      erlang:display("got list"),
+      python:call(P, graph_handler, Function_Append, [List]),
+      plot_graph_process_loop(Function_Append,Function_Plot,Args_Plot,P);
+    {start_freq, _} ->
       plot_graph_process_loop(Function_Append,Function_Plot,Args_Plot,P)
   end.
 %%%===================================================================
