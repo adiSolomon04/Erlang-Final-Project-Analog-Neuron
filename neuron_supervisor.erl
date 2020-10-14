@@ -216,6 +216,7 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,Lin
       supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts, HeirEts,HeirPid);
 
     {test_network,{StartFreq, StopFreq}}->
+      erlang:display("got test_network"),
       %%todo:add startFreq to global in python. call from here.
       ets:insert(HeirEts,{start_freq, StartFreq}),
       ets:insert(HeirEts,{stop_freq, StopFreq}),

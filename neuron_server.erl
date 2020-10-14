@@ -21,7 +21,7 @@
 
 -define(SERVER, neuron_server).
 
--record(neuron_server_state, { supervisors_map=#{}, env, frame, digraph_nodes, digraph_edges, numSup=1, pid2name=#{}}).
+-record(neuron_server_state, { supervisors_map=#{}, env, frame, digraph_nodes, digraph_edges, numSup=1, name2pid=#{}}).
 
 %%%===================================================================
 %%% API
@@ -93,7 +93,7 @@ handle_call(_Requset, _From, State = #neuron_server_state{}) ->
 
 %% Handles the launch of a single node network
 handle_cast({launch_network,[single_node, Net_Size, [Node], Frequency_Detect]},
-    State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num, frame = Panel}) ->
+    State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num, frame = Panel, name2pid=MapName2Pid}) ->
   Check=checkNodesConnected([Node],[node()]),
   if
     Check==false ->
@@ -111,15 +111,16 @@ handle_cast({launch_network,[single_node, Net_Size, [Node], Frequency_Detect]},
             error ->monitor_node(Node, true), Map#{Node => [NewSupervisor]};
             {ok, List} -> Map#{Node => List++[NewSupervisor]}
           end,
+  NewMapName2Pid = MapName2Pid#{Sup_Name => NewSupervisor},
 
   display_net(State),
   wxWindow:refresh(Panel),
-  {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1}}
+  {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1, name2pid=NewMapName2Pid}}
   end;
 
 %% Handles the launch of a four node network
 handle_cast({launch_network,[four_nodes, Net_Size, Nodes, Frequency_Detect]},
-    State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num}) -> %, pid2name = Pid2Name
+    State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num, name2pid=MapName2Pid}) -> %, pid2name = Pid2Name
   Check=checkNodesConnected(Nodes,[node()]),
   if
     Check==false ->
@@ -136,10 +137,12 @@ end,
     Nodes),
   NewMap=makeMap(Nodes,Map,NewSupervisor,length(Nodes)),
   display_net(State),
-  {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1}} %, pid2name = Pid2Name#{NewSupervisor=>Sup_Name
+  NewMapName2Pid = MapName2Pid#{Sup_Name => NewSupervisor},
+  {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1, name2pid=NewMapName2Pid}} %, pid2name = Pid2Name#{NewSupervisor=>Sup_Name
 end;
-handle_cast(Req={test_network, _}, State = #neuron_server_state{supervisors_map = Map}) ->
-  Supervisors =  lists:flatten(maps:values(Map)),
+
+handle_cast(Req={test_network, _}, State = #neuron_server_state{supervisors_map = _, name2pid=MapName2Pid}) ->
+  Supervisors =  lists:flatten(maps:values(MapName2Pid)),
   lists:foreach(fun(Pid)-> Pid!Req end, Supervisors),
   %%gather(Supervisors), %todo: supervisor sends a message with {done_testing, Pid}
   {noreply, State};
