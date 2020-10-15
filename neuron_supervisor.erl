@@ -8,7 +8,7 @@
 %%%-------------------------------------------------------------------
 -module(neuron_supervisor).
 -author("adisolo").
--export([start/4, init/4, start4neurons/3, start17neurons/3, fix4neurons/4, fix17neurons/4, open_ets_satatem/2]).
+-export([start/5, init/5, start4neurons/3, start17neurons/3, fix4neurons/4, fix17neurons/4, open_ets_satatem/2]).
 
   %% record for neuron init.
 -record(neuron_statem_state, {etsTid, actTypePar=identity,weightPar,biasPar=0,leakageFactorPar=5,leakagePeriodPar=73,pidIn=[],pidOut=[]}).
@@ -18,12 +18,12 @@
 %%%===================================================================
 
 
-start(Node_Conc, Net_Size, Nodes, Frequency_Detect)->
-  spawn(fun()->neuron_supervisor:init(Node_Conc, Net_Size, Nodes, Frequency_Detect)end).
+start(Node_Conc, Net_Size, Nodes, Frequency_Detect, Sup_Name)->
+  spawn(fun()->neuron_supervisor:init(Node_Conc, Net_Size, Nodes, Frequency_Detect, Sup_Name)end).
 
 
 %%% Node_Conc is single_node / four_nodes
-init(Node_Conc, Net_Size, Nodes, Frequency_Detect)->
+init(Node_Conc, Net_Size, Nodes, Frequency_Detect, Sup_Name)->
   %Set as a system process
   process_flag(trap_exit, true),
   %% Open an ets heir and holders process in every Node
@@ -36,6 +36,7 @@ init(Node_Conc, Net_Size, Nodes, Frequency_Detect)->
   put(start_freq, 0),
   put(stop_freq, 0),
   put(net_size, Net_Size),
+  put(sup_Name, Sup_Name),
   %% ====================
   %% ETS
   %% ====================
@@ -52,7 +53,7 @@ init(Node_Conc, Net_Size, Nodes, Frequency_Detect)->
   erlang:monitor(process,PidSender),
   put(pid_data_sender, PidSender),
   %% plot
-  PidPlotGraph = spawn(python_comm,plot_graph_process,[append_acc_vs_freq,plot_acc_vs_freq_global,[0]]), %% todo:add startFreq to global in python
+  PidPlotGraph = spawn(python_comm,plot_graph_process,[append_acc_vs_freq,plot_acc_vs_freq_global,Sup_Name]), %% todo:add startFreq to global in python
   erlang:monitor(process,PidPlotGraph),
   put(pid_plot_graph, PidPlotGraph),
   %% timing
@@ -94,7 +95,7 @@ init(Node_Conc, Net_Size, Nodes, Frequency_Detect)->
     {pidAcc,PidAcc},{neuronName2Pid_map,NeuronName2Pid_map},{linkedPid,LinkedPid},
     {nodes,Nodes}, {tids,Tids},{mapNodesToPidOwnersNew,MapNodesToPidOwners},
     {openEts,OpenEts},{netSize, Net_Size},{pidMsg,PidMsg},{node_Conc,Node_Conc}, {frequency_Detect,Frequency_Detect},
-    {pdm_msg_number,0},{start_freq, not_started},{stop_freq, not_started}]),
+    {pdm_msg_number,0},{start_freq, not_started},{stop_freq, not_started},{sup_Name, Sup_Name}]),
   supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts,HeirEts,HeirPid).
 
 %% The main function, the supervisor process receives different messages and calls the appropriate functions to handle the situation
@@ -205,7 +206,7 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,Lin
             [{frequency_Detect,Frequency_Detect}]=ets:lookup(HeirEts,frequency_Detect),
             ets:delete(HeirEts),
             self()!{test_network, {get(start_freq), get(stop_freq)}},
-            neuron_supervisor:init(Node_Conc, Net_Size, Nodes, Frequency_Detect);
+            neuron_supervisor:init(Node_Conc, Net_Size, Nodes, Frequency_Detect, get(sup_name));
         true ->
           supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts, HeirEts,HeirPid)
       end end;
@@ -247,9 +248,10 @@ protectionPid()->
       [{mapNodesToPidOwnersNew,MapNodesToPidOwnersNew}]=ets:lookup(HeirEts,mapNodesToPidOwnersNew),[{openEts,OpenEts}]=ets:lookup(HeirEts,openEts),
       [{netSize,Net_Size}]=ets:lookup(HeirEts,netSize), [{pdm_msg_number,Pdm_msg_number}] = ets:lookup(HeirEts,pdm_msg_number),
       [{start_freq, StartFreq}] = ets:lookup(HeirEts,start_freq), [{stop_freq, StopFreq}] =  ets:lookup(HeirEts,stop_freq),
-      [{frequency_Detect,Frequency_Detect}] = ets:lookup(HeirEts,frequency_Detect),
+      [{frequency_Detect,Frequency_Detect}] = ets:lookup(HeirEts,frequency_Detect), [{sup_Name, Sup_Name}]=ets:lookup(HeirEts,sup_Name),
 
       put(net_size, Net_Size),
+      put(sup_Name, Sup_Name),
       put(start_freq, StartFreq),
       put(stop_freq, StopFreq),
       put(pid_data_sender, PidSender),

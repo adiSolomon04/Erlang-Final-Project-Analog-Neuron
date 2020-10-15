@@ -13,7 +13,7 @@
 -include_lib("wx/include/wx.hrl").
 
 %% API
--export([start_link/0, test_networks/1, wx_env/1, launch_network/3]).
+-export([start_link/0, test_networks/1, wx_env/1, launch_network/3, sup_done/1, getSupName/4]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
@@ -21,7 +21,7 @@
 
 -define(SERVER, neuron_server).
 
--record(neuron_server_state, { supervisors_map=#{}, env, frame, digraph_nodes, digraph_edges, numSup=1, name2pid=#{}}).
+-record(neuron_server_state, { supervisors_map=#{}, env, frame, nodes, sup_done=[], digraph_edges, numSup=1, name2pid=#{}}).
 
 %%%===================================================================
 %%% API
@@ -43,6 +43,9 @@ test_networks(Freq={_, _}) ->
 
 wx_env(Env)->
   gen_server:cast(?SERVER, {env, Env}).
+
+sup_done(Sup_Name) ->
+  gen_server:cast(?SERVER, {sup_done, Sup_Name}).
 
 
 %%%===================================================================
@@ -69,7 +72,7 @@ init([]) ->
     neuron_server:handlePicture(Panel, WxData)
                                            end}]),
   wxWindow:refresh(Panel),
-  {ok, #neuron_server_state{digraph_nodes = digraph:new(), digraph_edges = digraph:new(), env=Env, frame=Panel}}.
+  {ok, #neuron_server_state{nodes = digraph:new(), digraph_edges = digraph:new(), env=Env, frame=Panel}}.
 
 %% @private
 %% @doc Handling call messages
@@ -93,53 +96,53 @@ handle_call(_Requset, _From, State = #neuron_server_state{}) ->
 
 %% Handles the launch of a single node network
 handle_cast({launch_network,[single_node, Net_Size, [Node], Frequency_Detect]},
-    State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num, frame = Panel, name2pid=MapName2Pid}) ->
+    State = #neuron_server_state{supervisors_map = Map, nodes = NodesGraph, digraph_edges = Graph, numSup=Num, name2pid=MapName2Pid}) ->
   Check=checkNodesConnected([Node],[node()]),
   if
     Check==false ->
-      wxMessageDialog:showModal(wxMessageDialog:new(wx:null(), "Wrong Node")),{noreply, State#neuron_server_state{supervisors_map = Map}};
+      wxMessageDialog:showModal(wxMessageDialog:new(wx:null(), "Wrong Node")),
+      {noreply, State#neuron_server_state{supervisors_map = Map}};
     true ->
-
-  NewSupervisor=neuron_supervisor:start(single_node, Net_Size, [Node], Frequency_Detect),
-  Sup_Name = getSupName(Num, Frequency_Detect),%io_lib:format("supervisor_~p_~fHz",[Num, Frequency_Detect]),
-  digraph:add_vertex(GraphNodes, getNodeName(Node)),
-  digraph:add_vertex(Graph, getNodeName(Node)),
-  digraph:add_vertex(Graph, Sup_Name),
-  digraph:add_edge(Graph, getNodeName(Node), Sup_Name),
-  %NewSupervisor!{test_network,{195, 200}},
-  NewMap= case maps:find(Node, Map) of
-            error ->monitor_node(Node, true), Map#{Node => [NewSupervisor]};
-            {ok, List} -> Map#{Node => List++[NewSupervisor]}
-          end,
-  NewMapName2Pid = MapName2Pid#{Sup_Name => NewSupervisor},
-
-  display_net(State),
-  wxWindow:refresh(Panel),
-  {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1, name2pid=NewMapName2Pid}}
+      Sup_Name = getSupName(Num, Net_Size, single_node, Frequency_Detect),
+      Node_Name = getNodeName(Node),
+      NewSupervisor=neuron_supervisor:start(single_node, Net_Size, [Node], Frequency_Detect, Sup_Name),
+      digraph:add_vertex(NodesGraph, Node_Name),
+      digraph:add_vertex(Graph, Node_Name),
+      digraph:add_vertex(Graph, Sup_Name),
+      digraph:add_edge(Graph, Node_Name, Sup_Name),
+      %NewSupervisor!{test_network,{195, 200}},
+      NewMap= case maps:find(Node, Map) of
+                error ->monitor_node(Node, true), Map#{Node => [NewSupervisor]};
+                {ok, List} -> Map#{Node => List++[NewSupervisor]}
+              end,
+      NewMapName2Pid = MapName2Pid#{Sup_Name => NewSupervisor},
+      display_net(State),
+      {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1, name2pid=NewMapName2Pid}}
   end;
 
 %% Handles the launch of a four node network
 handle_cast({launch_network,[four_nodes, Net_Size, Nodes, Frequency_Detect]},
-    State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph, numSup=Num, name2pid=MapName2Pid}) -> %, pid2name = Pid2Name
+    State = #neuron_server_state{supervisors_map = Map, nodes = NodesGraph, digraph_edges = Graph, numSup=Num, name2pid=MapName2Pid}) -> %, pid2name = Pid2Name
   Check=checkNodesConnected(Nodes,[node()]),
   if
     Check==false ->
       wxMessageDialog:showModal(wxMessageDialog:new(wx:null(), "Wrong Nodes")),{noreply, State#neuron_server_state{supervisors_map = Map}};
     true ->
-  NewSupervisor=neuron_supervisor:start(four_nodes, Net_Size, Nodes, Frequency_Detect),
-  Sup_Name = getSupName(Num, Frequency_Detect),%io_lib:format("supervisor_~p_~pHz",[Num, Frequency_Detect]),
-  lists:foreach(fun(Node) ->
-    digraph:add_vertex(GraphNodes, getNodeName(Node)),
-    digraph:add_vertex(Graph, getNodeName(Node)),
-    digraph:add_vertex(Graph, Sup_Name),
-    digraph:add_edge(Graph, getNodeName(Node), Sup_Name)
-end,
-    Nodes),
-  NewMap=makeMap(Nodes,Map,NewSupervisor,length(Nodes)),
-  display_net(State),
-  NewMapName2Pid = MapName2Pid#{Sup_Name => NewSupervisor},
-  {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1, name2pid=NewMapName2Pid}} %, pid2name = Pid2Name#{NewSupervisor=>Sup_Name
-end;
+      Sup_Name = getSupName(Num, Net_Size, four_nodes, Frequency_Detect),
+      NewSupervisor=neuron_supervisor:start(four_nodes, Net_Size, Nodes, Frequency_Detect, Sup_Name),
+      lists:foreach(fun(Node) ->
+        Node_Name = getNodeName(Node),
+        digraph:add_vertex(NodesGraph, Node_Name),
+        digraph:add_vertex(Graph, Node_Name),
+        digraph:add_vertex(Graph, Sup_Name),
+        digraph:add_edge(Graph, Node_Name, Sup_Name)
+                    end,
+        Nodes),
+      NewMap=makeMap(Nodes,Map,NewSupervisor,length(Nodes)),
+      display_net(State),
+      NewMapName2Pid = MapName2Pid#{Sup_Name => NewSupervisor},
+      {noreply, State#neuron_server_state{supervisors_map = NewMap, numSup=Num+1, name2pid=NewMapName2Pid}}
+  end;
 
 handle_cast(Req={test_network, _}, State = #neuron_server_state{supervisors_map = _, name2pid=MapName2Pid}) ->
   Supervisors =  lists:flatten(maps:values(MapName2Pid)),
@@ -149,14 +152,21 @@ handle_cast(Req={test_network, _}, State = #neuron_server_state{supervisors_map 
 handle_cast({env,Env}, State)->
   %wx:set_env(Env),
   %wxMessageDialog:showModal(wxMessageDialog:new(wx:null(), "message server")),
-  {noreply, State#neuron_server_state{env = Env}}.
+  {noreply, State#neuron_server_state{env = Env}};
+
+handle_cast({sup_done, Sup_Name}, State=#neuron_server_state{sup_done = Sup_Done, digraph_edges = Graph})->
+  digraph:del_vertex(Graph, Sup_Name),
+  New_Sup_Done = Sup_Done++[Sup_Name],
+  New_State = State#neuron_server_state{sup_done = New_Sup_Done},
+  display_net(New_State),
+  {noreply, New_State}.
 
 %% @private
 %% @doc Handling all non call/cast messages
 
 
-handle_info({nodedown, NodeDown}, State = #neuron_server_state{supervisors_map = Map, digraph_nodes = GraphNodes, digraph_edges = Graph}) ->
-  digraph:del_vertex(GraphNodes, getNodeName(NodeDown)),
+handle_info({nodedown, NodeDown}, State = #neuron_server_state{supervisors_map = Map, nodes = NodesGraph, digraph_edges = Graph}) ->
+  digraph:del_vertex(NodesGraph, getNodeName(NodeDown)),
   digraph:del_vertex(Graph, getNodeName(NodeDown)),
   display_net(State),
   Nodes=maps:keys(Map),
@@ -202,12 +212,13 @@ display_net(State=#neuron_server_state{frame = Panel})->
   create_new_net(State),
   wxWindow:refresh(Panel).
 
-create_new_net(#neuron_server_state{digraph_nodes = GraphNodes, digraph_edges = Graph})->
-  Nodes = digraph:vertices(GraphNodes),
+create_new_net(#neuron_server_state{nodes = NodesGraph, sup_done = Sup_Done, digraph_edges = Graph})->
+  Nodes = digraph:vertices(NodesGraph),
   EdgeList = getEdgesList(Graph),
   Edges = lists:map(fun(X) -> {element(3,X),element(2,X)} end, EdgeList),
   graphviz:digraph("Network"),
   graphviz:add_cluster_nodes("Nodes Used",Nodes),
+  graphviz:add_cluster_nodes("Supervisors Done",Sup_Done),
   lists:foreach(fun({X,Y}) -> graphviz:add_edge(X,Y)end, Edges),
   graphviz:set_shape("doublecircle", Nodes),
   graphviz:to_file("network.png", "png"),
@@ -246,9 +257,11 @@ getNodeName(Node) when is_atom(Node) ->
             end, atom_to_list(Node));
 getNodeName(_) -> err.
 
-getSupName(Num, Frequency_Detect) ->
+getSupName(Num, Net_Size, Net_Conc, Frequency_Detect) ->
   Freq_no_dots = getName_only_(io_lib:format("~p",[Frequency_Detect])),
-  io_lib:format("supervisor_~p_",[Num])++[Freq_no_dots]++"Hz".
+  [NumSup]=io_lib:format("~w",[Num]),
+  [NumNeurons]=io_lib:format("~w",[Net_Size]),
+  "sup"++NumSup++"_"++NumNeurons++io_lib:format("_on_~s_",[Net_Conc])++"f_"++Freq_no_dots++"Hz".
 
 getName_only_([String]) ->
   NewString = lists:map(fun(X) -> case X of

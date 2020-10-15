@@ -101,14 +101,13 @@ def append_acc_vs_freq(List):
 
 
 # Print acc vs. freq function.
-def plot_acc_vs_freq_global(not_used):
+def plot_acc_vs_freq_global(figure_name):
     global acc_vs_freq
     global start_freq
     samp_rate = 1
     data = acc_vs_freq
     x = np.arange(start_freq, start_freq + 1.0 * samp_rate / 200000 * (len(data)), 1.0 / 200000 * samp_rate)
-
-    plt.figure('Figure')
+    plt.figure(str(figure_name, 'utf-8'))
     plt.plot(x[0:len(data)], data)
     plt.xlabel('Frequency[Hz]', fontsize=14)
     plt.ylabel('Acc', fontsize=14)

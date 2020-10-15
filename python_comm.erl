@@ -28,7 +28,7 @@ plot_graph(Function, Args)->
 
 
 %% spawn a process which
-plot_graph_process(Function_Append,Function_Plot,Args_Plot)->
+plot_graph_process(Function_Append,Function_Plot,Sup_Name)->
   {ok, CurrentDirectory} = file:get_cwd(),
   {ok, P}= python:start([
     {python_path, CurrentDirectory},
@@ -36,20 +36,22 @@ plot_graph_process(Function_Append,Function_Plot,Args_Plot)->
   receive
     {start_freq, StartFreq} -> python:call(P, graph_handler, set_start_freq,[StartFreq])
   end,
-  plot_graph_process_loop(Function_Append,Function_Plot,Args_Plot,P).
+  plot_graph_process_loop(Function_Append,Function_Plot,Sup_Name,P).
 
 
-plot_graph_process_loop(Function_Append,Function_Plot,Args_Plot,P)->
+plot_graph_process_loop(Function_Append,Function_Plot,Sup_Name,P)->
   receive
     plot -> erlang:display("network done calculating"),
       os:cmd("notify-send Task complete_succesfully"),
-      python:call(P, graph_handler, Function_Plot,Args_Plot);
+      neuron_server:sup_done(Sup_Name),
+      io:format("sup name ~p", [Sup_Name]),
+      python:call(P, graph_handler, Function_Plot,[]);%%list_to_binary(Sup_Name)
+
     List when is_list(List) ->
-      erlang:display("got list"),
       python:call(P, graph_handler, Function_Append, [List]),
-      plot_graph_process_loop(Function_Append,Function_Plot,Args_Plot,P);
+      plot_graph_process_loop(Function_Append,Function_Plot,Sup_Name,P);
     {start_freq, _} ->
-      plot_graph_process_loop(Function_Append,Function_Plot,Args_Plot,P)
+      plot_graph_process_loop(Function_Append,Function_Plot,Sup_Name,P)
   end.
 %%%===================================================================
 %%%      opening a Python instance erl-port
