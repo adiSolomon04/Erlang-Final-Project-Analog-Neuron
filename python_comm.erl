@@ -45,7 +45,7 @@ plot_graph_process_loop(Function_Append,Function_Plot,Sup_Name,P)->
       os:cmd("notify-send Task complete_succesfully"),
       neuron_server:sup_done(Sup_Name),
       io:format("sup name ~p", [Sup_Name]),
-      python:call(P, graph_handler, Function_Plot,[]);%%list_to_binary(Sup_Name)
+      python:call(P, graph_handler, Function_Plot,[list_to_binary(Sup_Name)]);%%
 
     List when is_list(List) ->
       python:call(P, graph_handler, Function_Append, [List]),
