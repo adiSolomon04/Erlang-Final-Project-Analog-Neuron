@@ -18,3 +18,7 @@ _checkouts/
 
 # input/ output files
 *.pcm
+*.pyc
+__pycache__/
+
+.idea

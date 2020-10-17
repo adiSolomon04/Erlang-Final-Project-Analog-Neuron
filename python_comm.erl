@@ -8,8 +8,7 @@
 %%%-------------------------------------------------------------------
 -module(python_comm).
 -author("adisolo").
--compile(export_all).
--export([plot_graph/2]).
+-export([plot_graph/2, plot_graph_process/3]).
 
 %%%===================================================================
 %%% API
@@ -17,8 +16,8 @@
 
 %% Spawn a python instance for graph plotting.
 %% Function is:
-%% plot_acc_vs_freq_fromlist   Args=[file_data_name, start_freq, list]
-%% plot_val_vs_time_fromlist   Args=[file_data_name, list]
+%% plot_val_vs_freq_global   Args=[file_data_name, start_freq]
+%% plot_acc_vs_time_global   Args=[file_data_name]
 
 %% NOT USED
 %% plot_acc_vs_freq   Args=[file_data_name, start_freq]
@@ -29,23 +28,31 @@ plot_graph(Function, Args)->
 
 
 %% spawn a process which
-plot_graph_process(Function_Append,Function_Plot,Args_Plot)->
-  io:format("gotr hereeeeeeeeeeeeeee"),
+plot_graph_process(Function_Append,Function_Plot,Sup_Name)->
   {ok, CurrentDirectory} = file:get_cwd(),
   {ok, P}= python:start([
     {python_path, CurrentDirectory},
     {python, "python3"}]),
-  plot_graph_process_loop(Function_Append,Function_Plot,Args_Plot,P).
-
-
-plot_graph_process_loop(Function_Append,Function_Plot,Args_Plot,P)->
   receive
-    plot -> io:format("plot~n"),python:call(P, graph_handler, Function_Plot,Args_Plot);
-    List ->io:format("append~n"),python:call(P, graph_handler, Function_Append, [List]),
-      plot_graph_process_loop(Function_Append,Function_Plot,Args_Plot,P)
+    {start_freq, StartFreq} -> python:call(P, graph_handler, set_start_freq,[StartFreq])
+  end,
+  plot_graph_process_loop(Function_Append,Function_Plot,Sup_Name,P).
+
+
+plot_graph_process_loop(Function_Append,Function_Plot,Sup_Name,P)->
+  receive
+    plot -> erlang:display("network done calculating"),
+      os:cmd("notify-send Task complete_succesfully"),
+      neuron_server:sup_done(Sup_Name),
+      io:format("sup name ~p", [Sup_Name]),
+      python:call(P, graph_handler, Function_Plot,[list_to_binary(Sup_Name)]);%%
+
+    List when is_list(List) ->
+      python:call(P, graph_handler, Function_Append, [List]),
+      plot_graph_process_loop(Function_Append,Function_Plot,Sup_Name,P);
+    {start_freq, _} ->
+      plot_graph_process_loop(Function_Append,Function_Plot,Sup_Name,P)
   end.
-
-
 %%%===================================================================
 %%%      opening a Python instance erl-port
 %%%===================================================================
@@ -75,11 +82,32 @@ run_python(Function, Args)->
 %% in order to transfer to 'str' in python
 string_to_binary(List) ->
   [Head|Tail] = List,
-  NewList = [list_to_binary(Head)|Tail].
-  %lists:map(
-  %  fun(X) -> case is_list(X) of
-  %              true -> list_to_binary(X);
-  %              _ -> X
-  %            end
-  %  end
-  %, List).
+  [list_to_binary(Head)|Tail].
+
+%%%===================================================================
+%%% Testing Transfer Time python
+%%%===================================================================
+
+%% Testing - adi
+%List = pcm_handler:create_wave_list(0, 2.5, 1). %% 50 k
+%python_comm:run_python(plot_val_vs_time_fromlist, ["not used", List]).
+
+%% TEST RESULTS
+
+%%% 7> python_comm:run_python(plot_val_vs_time_fromlist, ["not used", List1]). %% 50 k
+%%% "Time: 0.324717 seconds" - other result are close.
+%%% 8> %% 50 k
+%%% 8> python_comm:run_python(plot_val_vs_time_fromlist, ["not used", List2]). %% 100 k
+%%% "Time: 1.092377 seconds" - other result are close.
+%%% 9> %% 100 k
+%%% 9> python_comm:run_python(plot_val_vs_time_fromlist, ["not used", List3]). %% 200 k
+%%% "Time: 4.655224 seconds"
+%%% "Time: 5.91483 seconds"
+%%% "Time: 3.813945 seconds"
+%%% "Time: 5.219672 seconds"
+%%% 10> %% 200 k
+%%% 10> python_comm:run_python(plot_val_vs_time_fromlist, ["not used", List4]). %% 300 k
+%%% "Time: 14.548159 seconds"
+%%% "Time: 16.541054 seconds"
+%%% "Time: 12.826313 seconds"
+%%% 11> %% 300 k
