@@ -37,6 +37,7 @@ init(Node_Conc, Net_Size, Nodes, Frequency_Detect, Sup_Name)->
   put(stop_freq, 0),
   put(net_size, Net_Size),
   put(sup_Name, Sup_Name),
+
   %% ====================
   %% ETS
   %% ====================
@@ -195,7 +196,10 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,Lin
             exit(PidSender, kill_and_start_over),
             exit(PidPlotGraph, kill_and_start_over),
             exit(PidAcc, kill_and_start_over),
-            exit(PidMsg, kill_and_start_over),
+            if PidMsg =/= none ->
+            exit(PidMsg, kill_and_start_over);
+            true ->ok
+            end,
             exit(LinkedPid, kill_and_start_over),
             exit(HeirPid, kill_and_start_over),
 
@@ -206,7 +210,7 @@ supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,Lin
             [{frequency_Detect,Frequency_Detect}]=ets:lookup(HeirEts,frequency_Detect),
             ets:delete(HeirEts),
             self()!{test_network, {get(start_freq), get(stop_freq)}},
-            neuron_supervisor:init(Node_Conc, Net_Size, Nodes, Frequency_Detect, get(sup_name));
+            neuron_supervisor:init(Node_Conc, Net_Size, Nodes, Frequency_Detect, get(sup_Name));
         true ->
           supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,LinkedPid,Nodes,Tids,MapNodesToPidOwners,OpenEts, HeirEts,HeirPid)
       end end;
@@ -266,6 +270,7 @@ protectionPid()->
       erlang:monitor(process,PidPlotGraph),
       erlang:monitor(process,PidAcc),
       ListPid = maps:values(NeuronName2Pid_map),
+      lists:foreach(fun({{_,PidEtsOwner,PidBackup},_})->erlang:monitor(process,PidEtsOwner),erlang:monitor(process,PidBackup)end,OpenEts),
       {NewLinkedPid,_} = spawn_monitor(fun()->lists:foreach(fun(X)->link(X)end,ListPid), receive Y->Y end end),
       ets:setopts(HeirEts,{heir, HeirPid, 'SupervisorDown'}),
       supervisor(PidTiming,PidSender,PidPlotGraph,PidAcc,PidMsg,NeuronName2Pid_map,NewLinkedPid,Nodes,Tids,MapNodesToPidOwnersNew,OpenEts,HeirEts,HeirPid)
